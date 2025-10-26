@@ -9,7 +9,7 @@ fn main() {
         command.clear();
         match io::stdin().read_line(&mut command) {
             Ok(_) => {
-                eprintln!("$ {}: command not found", command.trim());
+                eprintln!("{}: command not found", command.trim());
                 break;
             }
             Err(e) => {
