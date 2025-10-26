@@ -2,7 +2,19 @@
 use std::io::{self, Write};
 
 fn main() {
-    // TODO: Uncomment the code below to pass the first stage
-    print!("$ ");
-    io::stdout().flush().unwrap();
+    let mut command = String::new();
+    loop {
+        print!("$ ");
+        io::stdout().flush().unwrap();
+        command.clear();
+        match io::stdin().read_line(&mut command) {
+            Ok(_) => {
+                eprintln!("$ {}: command not found", command.trim());
+                break;
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+            }
+        }
+    }
 }
