@@ -18,8 +18,9 @@ fn main() {
                 let mut arguments = input.split_whitespace().enumerate();
                 let (_, command) = arguments.next().unwrap();
                 match command {
-                    "exit" => command_exit(arguments),
                     "echo" => command_echo(arguments),
+                    "exit" => command_exit(arguments),
+                    "type" => command_type(arguments),
                     _ => eprintln!("{command}: command not found"),
                 }
             }
@@ -47,4 +48,16 @@ fn command_echo(arguments: Enumerate<SplitWhitespace>) {
         print!("{argument}");
     }
     println!();
+}
+
+fn command_type(arguments: Enumerate<SplitWhitespace>) {
+    for (index, argument) in arguments {
+        if index == 1 {
+            match argument {
+                "echo" | "exit" | "type" => println!("{argument} is a shell builtin"),
+                _ => println!("{argument}: not found"),
+            }
+        }
+        break;
+    }
 }
