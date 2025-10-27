@@ -172,7 +172,7 @@ fn parse_tokens(input: &str) -> Vec<String> {
                     if let Some(next_character) = characters.peek() {
                         match next_character {
                             '"' | '\\' => escape_next_character = true,
-                            _ => (),
+                            _ => current_token.push(character),
                         }
                     }
                 } else {
