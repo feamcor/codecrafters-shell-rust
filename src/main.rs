@@ -22,6 +22,7 @@ fn main() {
                 match command {
                     "echo" => command_echo(arguments),
                     "exit" => command_exit(arguments),
+                    "pwd"  => command_pwd(arguments),
                     "type" => command_type(arguments),
                     _ => run_executable(command, arguments),
                 }
@@ -56,7 +57,7 @@ fn command_type(arguments: Enumerate<SplitWhitespace>) {
     for (index, argument) in arguments {
         if index == 1 {
             match argument {
-                "echo" | "exit" | "type" => println!("{argument} is a shell builtin"),
+                "echo" | "exit" | "pwd" | "type" => println!("{argument} is a shell builtin"),
                 _ => {
                     match search_executable(argument) {
                         Some(full_path_to_executable) => println!("{argument} is {full_path_to_executable}"),
@@ -99,4 +100,9 @@ fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
         },
         None => eprintln!("{command}: command not found"),
     }
+}
+
+fn command_pwd(_arguments: Enumerate<SplitWhitespace>) {
+    let current_directory = std::env::current_dir().unwrap();
+    println!("{}", current_directory.to_string_lossy());
 }
