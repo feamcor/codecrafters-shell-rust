@@ -125,12 +125,13 @@ fn parse_tokens(input: &str) -> Vec<String> {
     let mut current_token = String::new();
     let mut in_single_quotes = false;
     let mut in_double_quotes = false;
+    let mut escape_next_character = false;
 
     let mut characters = input.trim().chars().peekable();
 
     while let Some(character) = characters.next() {
         match character {
-            '\'' => {
+            '\'' if !escape_next_character => {
                 if current_token.is_empty() {
                     in_single_quotes = true;
                     in_double_quotes = false;
@@ -147,7 +148,7 @@ fn parse_tokens(input: &str) -> Vec<String> {
                     }
                 }
             },
-            '"' => {
+            '"' if !escape_next_character => {
                 if current_token.is_empty() {
                     in_single_quotes = false;
                     in_double_quotes = true;
@@ -164,7 +165,14 @@ fn parse_tokens(input: &str) -> Vec<String> {
                     }
                 }
             },
-            character if character.is_whitespace() => {
+            '\\' if !escape_next_character => {
+                if in_single_quotes || in_double_quotes {
+                    current_token.push(character);
+                } else {
+                    escape_next_character = true;
+                }
+            },
+            character if character.is_whitespace() && !escape_next_character => {
                 if in_single_quotes || in_double_quotes {
                     current_token.push(character);
                 } else if !current_token.is_empty() {
@@ -172,7 +180,10 @@ fn parse_tokens(input: &str) -> Vec<String> {
                     current_token = String::new();
                 }
             },
-            _ => current_token.push(character),
+            _ => {
+                current_token.push(character);
+                escape_next_character = false;
+            },
         }
     }
 
