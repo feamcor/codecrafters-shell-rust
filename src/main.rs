@@ -88,8 +88,8 @@ fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
 
 fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
     match search_executable(command) {
-        Some(full_path_to_executable) => {
-            let output = Command::new(full_path_to_executable)
+        Some(_) => {
+            let output = Command::new(command)
                 .args(arguments.map(|(_, argument)| argument))
                 .output();
             match output {
