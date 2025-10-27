@@ -166,8 +166,15 @@ fn parse_tokens(input: &str) -> Vec<String> {
                 }
             },
             '\\' if !escape_next_character => {
-                if in_single_quotes || in_double_quotes {
+                if in_single_quotes {
                     current_token.push(character);
+                } else if in_double_quotes {
+                    if let Some(next_character) = characters.peek() {
+                        match next_character {
+                            '"' | '\\' => escape_next_character = true,
+                            _ => (),
+                        }
+                    }
                 } else {
                     escape_next_character = true;
                 }
