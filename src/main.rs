@@ -136,7 +136,7 @@ fn parse_tokens(input: &str) -> Vec<String> {
                         if next_character.is_whitespace() {
                             tokens.push(current_token);
                             current_token = String::new();
-                        } else if next_character == &'\'' {
+                        } else if next_character == &'\'' && !in_single_quotes {
                             current_token.push(character);
                         }
                     }
