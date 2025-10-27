@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::iter::Enumerate;
+use std::path::{Path, PathBuf};
 use std::str::SplitWhitespace;
 
 static SHELL_PROMPT: &str = "$";
@@ -55,9 +56,33 @@ fn command_type(arguments: Enumerate<SplitWhitespace>) {
         if index == 1 {
             match argument {
                 "echo" | "exit" | "type" => println!("{argument} is a shell builtin"),
-                _ => println!("{argument}: not found"),
+                _ => {
+                    match search_executable(argument) {
+                        Some(path) => println!("{argument} is {path}"),
+                        None => println!("{argument}: not found")
+                    }
+                },
             }
         }
         break;
     }
+}
+
+fn search_executable(executable: &str) -> Option<String> {
+    let mut paths = std::env::var("PATH").unwrap();
+    paths.push_str(":");
+    for directory in paths.split(":") {
+        let full_path = Path::new(directory).join(executable);
+        if full_path.is_file() && is_executable(&full_path).unwrap_or(false) {
+            return Some(full_path.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
+#[cfg(unix)]
+fn is_executable(path: &PathBuf) -> std::io::Result<bool> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::metadata(path)?;
+    Ok(metadata.permissions().mode() & 0o111 != 0)
 }
