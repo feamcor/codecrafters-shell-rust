@@ -130,14 +130,14 @@ fn parse_tokens(input: &str) -> Vec<String> {
     while let Some(character) = characters.next() {
         match character {
             '\'' => {
-                in_single_quotes = !in_single_quotes;
-                if let Some(next_character) = characters.peek() {
-                    if !current_token.is_empty() {
-                        if next_character.is_whitespace() {
+                if current_token.is_empty() {
+                    in_single_quotes = true;
+                } else {
+                    if let Some(next_character) = characters.peek() {
+                        if in_single_quotes && next_character.is_whitespace() {
                             tokens.push(current_token);
                             current_token = String::new();
-                        } else if next_character == &'\'' && !in_single_quotes {
-                            current_token.push(character);
+                            in_single_quotes = false;
                         }
                     }
                 }
