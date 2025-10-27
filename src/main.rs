@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::SplitWhitespace;
 
-static SHELL_PROMPT: &str = "$";
+static SHELL_PROMPT: &str = "$ ";
 
 fn main() {
     let mut input = String::new();
     loop {
-        print!("{} ", SHELL_PROMPT);
+        print!("{SHELL_PROMPT}");
         io::stdout().flush().unwrap();
         input.clear();
         match io::stdin().read_line(&mut input) {
@@ -93,7 +93,7 @@ fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
                 .args(arguments.map(|(_, argument)| argument))
                 .output();
             match output {
-                Ok(output) => println!("{}", String::from_utf8_lossy(&output.stdout)),
+                Ok(output) => print!("{}", String::from_utf8_lossy(&output.stdout)),
                 Err(e) => eprintln!("{e}"),
             }
         },
