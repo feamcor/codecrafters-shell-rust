@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::SplitWhitespace;
 
-static SHELL_PROMPT: &str = "$ ";
+static SHELL_PROMPT: &str = "$";
 
 fn main() {
     let mut input = String::new();
     loop {
-        print!("{SHELL_PROMPT}");
+        print!("{SHELL_PROMPT} ");
         io::stdout().flush().unwrap();
         input.clear();
         match io::stdin().read_line(&mut input) {
