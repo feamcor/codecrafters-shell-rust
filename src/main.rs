@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use std::env::{current_dir, set_current_dir, var};
 use std::io::{self, Write};
 use std::iter::Enumerate;
@@ -38,11 +37,8 @@ fn main() {
 
 fn command_exit(arguments: Enumerate<SplitWhitespace>) {
     let mut exit_status = 0;
-    for (index, argument) in arguments {
-        if index == 1 {
-            exit_status = argument.parse().unwrap_or(1);
-            break;
-        }
+    for (_index, argument) in arguments.take(1) {
+        exit_status = argument.parse().unwrap_or(1);
     }
     std::process::exit(exit_status);
 }
@@ -56,20 +52,17 @@ fn command_echo(arguments: Enumerate<SplitWhitespace>) {
 }
 
 fn command_type(arguments: Enumerate<SplitWhitespace>) {
-    for (index, argument) in arguments {
-        if index == 1 {
-            match argument {
-                "cd" | "echo" | "exit" | "pwd" | "type" =>
-                    println!("{argument} is a shell builtin"),
-                _ => {
-                    match search_executable(argument) {
-                        Some(full_path_to_executable) => println!("{argument} is {full_path_to_executable}"),
-                        None => eprintln!("{argument}: not found")
-                    }
-                },
-            }
+    for (_index, argument) in arguments.take(1) {
+        match argument {
+            "cd" | "echo" | "exit" | "pwd" | "type" =>
+                println!("{argument} is a shell builtin"),
+            _ => {
+                match search_executable(argument) {
+                    Some(full_path_to_executable) => println!("{argument} is {full_path_to_executable}"),
+                    None => eprintln!("{argument}: not found")
+                }
+            },
         }
-        break;
     }
 }
 
@@ -111,13 +104,17 @@ fn command_pwd(_arguments: Enumerate<SplitWhitespace>) {
 }
 
 fn command_cd(arguments: Enumerate<SplitWhitespace>) {
-    for (index, argument) in arguments {
-        if index == 1 {
-            match set_current_dir(argument) {
-                Ok(_) => break,
-                Err(_) => eprintln!("cd: {argument}: No such file or directory"),
-            }
-        }
-        break;
+    let home_directory = var("HOME").unwrap_or(String::new());
+    let mut directory: &str = "";
+    for (_index, argument) in arguments.take(1) {
+        directory = match argument {
+            "~" => &home_directory,
+            _   => argument,
+        };
+    }
+    directory = if directory.is_empty() { &home_directory } else { directory };
+    match set_current_dir(directory) {
+        Ok(_) => (),
+        Err(_) => eprintln!("cd: {directory}: No such file or directory"),
     }
 }
