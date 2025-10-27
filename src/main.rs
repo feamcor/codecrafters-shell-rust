@@ -2,14 +2,15 @@
 use std::io::{self, Write};
 use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str::SplitWhitespace;
 
-static SHELL_PROMPT: &str = "$";
+static SHELL_PROMPT: &str = "$ ";
 
 fn main() {
     let mut input = String::new();
     loop {
-        print!("{} ", SHELL_PROMPT);
+        print!("{SHELL_PROMPT}");
         io::stdout().flush().unwrap();
         input.clear();
         match io::stdin().read_line(&mut input) {
@@ -22,7 +23,7 @@ fn main() {
                     "echo" => command_echo(arguments),
                     "exit" => command_exit(arguments),
                     "type" => command_type(arguments),
-                    _ => eprintln!("{command}: command not found"),
+                    _ => run_executable(command, arguments),
                 }
             }
             Err(e) => {
@@ -40,7 +41,7 @@ fn command_exit(arguments: Enumerate<SplitWhitespace>) {
             break;
         }
     }
-    std::process::exit(exit_status as i32);
+    std::process::exit(exit_status);
 }
 
 fn command_echo(arguments: Enumerate<SplitWhitespace>) {
@@ -58,8 +59,8 @@ fn command_type(arguments: Enumerate<SplitWhitespace>) {
                 "echo" | "exit" | "type" => println!("{argument} is a shell builtin"),
                 _ => {
                     match search_executable(argument) {
-                        Some(path) => println!("{argument} is {path}"),
-                        None => println!("{argument}: not found")
+                        Some(full_path_to_executable) => println!("{argument} is {full_path_to_executable}"),
+                        None => eprintln!("{argument}: not found")
                     }
                 },
             }
@@ -68,21 +69,34 @@ fn command_type(arguments: Enumerate<SplitWhitespace>) {
     }
 }
 
-fn search_executable(executable: &str) -> Option<String> {
-    let mut paths = std::env::var("PATH").unwrap();
-    paths.push_str(":");
-    for directory in paths.split(":") {
-        let full_path = Path::new(directory).join(executable);
-        if full_path.is_file() && is_executable(&full_path).unwrap_or(false) {
-            return Some(full_path.to_string_lossy().into_owned());
+fn search_executable(command: &str) -> Option<String> {
+    let paths = std::env::var("PATH").unwrap_or(String::new());
+    for path in paths.split(":") {
+        let full_path_to_executable = Path::new(path).join(command);
+        if full_path_to_executable.is_file() && is_executable(&full_path_to_executable).unwrap_or(false) {
+            return Some(full_path_to_executable.to_string_lossy().into_owned());
         }
     }
     None
 }
 
-#[cfg(unix)]
-fn is_executable(path: &PathBuf) -> std::io::Result<bool> {
+fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
     use std::os::unix::fs::PermissionsExt;
-    let metadata = std::fs::metadata(path)?;
+    let metadata = std::fs::metadata(full_path_to_executable)?;
     Ok(metadata.permissions().mode() & 0o111 != 0)
+}
+
+fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
+    match search_executable(command) {
+        Some(full_path_to_executable) => {
+            let output = Command::new(full_path_to_executable)
+                .args(arguments.map(|(_, argument)| argument))
+                .output();
+            match output {
+                Ok(output) => println!("{}", String::from_utf8_lossy(&output.stdout)),
+                Err(e) => eprintln!("{e}"),
+            }
+        },
+        None => eprintln!("{command}: command not found"),
+    }
 }
