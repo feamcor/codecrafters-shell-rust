@@ -124,6 +124,7 @@ fn parse_tokens(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current_token = String::new();
     let mut in_single_quotes = false;
+    let mut in_double_quotes = false;
 
     let mut characters = input.trim().chars().peekable();
 
@@ -132,18 +133,39 @@ fn parse_tokens(input: &str) -> Vec<String> {
             '\'' => {
                 if current_token.is_empty() {
                     in_single_quotes = true;
+                    in_double_quotes = false;
                 } else {
                     if let Some(next_character) = characters.peek() {
                         if in_single_quotes && next_character.is_whitespace() {
                             tokens.push(current_token);
                             current_token = String::new();
                             in_single_quotes = false;
+                            in_double_quotes = false;
+                        } else if in_double_quotes {
+                            current_token.push(character);
+                        }
+                    }
+                }
+            },
+            '"' => {
+                if current_token.is_empty() {
+                    in_single_quotes = false;
+                    in_double_quotes = true;
+                } else {
+                    if let Some(next_character) = characters.peek() {
+                        if in_double_quotes && next_character.is_whitespace() {
+                            tokens.push(current_token);
+                            current_token = String::new();
+                            in_single_quotes = false;
+                            in_double_quotes = false;
+                        } else if in_single_quotes {
+                            current_token.push(character);
                         }
                     }
                 }
             },
             character if character.is_whitespace() => {
-                if in_single_quotes {
+                if in_single_quotes || in_double_quotes {
                     current_token.push(character);
                 } else if !current_token.is_empty() {
                     tokens.push(current_token);
