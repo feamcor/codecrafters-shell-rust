@@ -19,11 +19,12 @@ fn main() {
                 let (_, command) = arguments.next().unwrap();
                 match command {
                     "exit" => command_exit(arguments),
-                    _ => eprintln!("{}: command not found", command),
+                    "echo" => command_echo(arguments),
+                    _ => eprintln!("{command}: command not found"),
                 }
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                eprintln!("Error: {e}");
             }
         }
     }
@@ -38,4 +39,12 @@ fn command_exit(arguments: Enumerate<SplitWhitespace>) {
         }
     }
     std::process::exit(exit_status as i32);
+}
+
+fn command_echo(arguments: Enumerate<SplitWhitespace>) {
+    for (index, argument) in arguments {
+        if index > 1 { print!(" "); }
+        print!("{argument}");
+    }
+    println!();
 }
