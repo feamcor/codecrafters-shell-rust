@@ -133,11 +133,11 @@ fn parse_tokens(input: &str) -> Vec<String> {
                 in_single_quotes = !in_single_quotes;
                 if let Some(next_character) = characters.peek() {
                     if !current_token.is_empty() {
-                        if !next_character.is_whitespace() && *next_character != '\'' {
-                            // do nothing
-                        } else {
+                        if next_character.is_whitespace() {
                             tokens.push(current_token);
                             current_token = String::new();
+                        } else if next_character == &'\'' {
+                            current_token.push(character);
                         }
                     }
                 }
