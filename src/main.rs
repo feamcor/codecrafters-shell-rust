@@ -1,9 +1,9 @@
+use core::slice::Iter;
 use std::env::{current_dir, set_current_dir, var};
 use std::io::{self, Write};
 use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::str::SplitWhitespace;
 
 static SHELL_PROMPT: &str = "$ ";
 
@@ -17,9 +17,10 @@ fn main() {
             Ok(_) => {
                 let input = input.trim();
                 if input.is_empty() { continue; }
-                let mut arguments = input.split_whitespace().enumerate();
+                let tokens = parse_tokens(input);
+                let mut arguments = tokens.iter().enumerate();
                 let (_, command) = arguments.next().unwrap();
-                match command {
+                match command.as_str() {
                     "cd"   => command_cd(arguments),
                     "echo" => command_echo(arguments),
                     "exit" => command_exit(arguments),
@@ -35,7 +36,7 @@ fn main() {
     }
 }
 
-fn command_exit(arguments: Enumerate<SplitWhitespace>) {
+fn command_exit(arguments: Enumerate<Iter<String>>) {
     let mut exit_status = 0;
     for (_index, argument) in arguments.take(1) {
         exit_status = argument.parse().unwrap_or(1);
@@ -43,7 +44,7 @@ fn command_exit(arguments: Enumerate<SplitWhitespace>) {
     std::process::exit(exit_status);
 }
 
-fn command_echo(arguments: Enumerate<SplitWhitespace>) {
+fn command_echo(arguments: Enumerate<Iter<String>>) {
     for (index, argument) in arguments {
         if index > 1 { print!(" "); }
         print!("{argument}");
@@ -51,9 +52,9 @@ fn command_echo(arguments: Enumerate<SplitWhitespace>) {
     println!();
 }
 
-fn command_type(arguments: Enumerate<SplitWhitespace>) {
+fn command_type(arguments: Enumerate<Iter<String>>) {
     for (_index, argument) in arguments.take(1) {
-        match argument {
+        match argument.as_str() {
             "cd" | "echo" | "exit" | "pwd" | "type" =>
                 println!("{argument} is a shell builtin"),
             _ => {
@@ -83,7 +84,7 @@ fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
     Ok(metadata.permissions().mode() & 0o111 != 0)
 }
 
-fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
+fn run_executable(command: &str, arguments: Enumerate<Iter<String>>) {
     match search_executable(command) {
         Some(_) => {
             let output = Command::new(command)
@@ -98,16 +99,16 @@ fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
     }
 }
 
-fn command_pwd(_arguments: Enumerate<SplitWhitespace>) {
+fn command_pwd(_arguments: Enumerate<Iter<String>>) {
     let current_directory = current_dir().unwrap();
     println!("{}", current_directory.to_string_lossy());
 }
 
-fn command_cd(arguments: Enumerate<SplitWhitespace>) {
+fn command_cd(arguments: Enumerate<Iter<String>>) {
     let home_directory = var("HOME").unwrap_or(String::new());
     let mut directory: &str = "";
     for (_index, argument) in arguments.take(1) {
-        directory = match argument {
+        directory = match argument.as_str() {
             "~" => &home_directory,
             _   => argument,
         };
@@ -117,4 +118,43 @@ fn command_cd(arguments: Enumerate<SplitWhitespace>) {
         Ok(_) => (),
         Err(_) => eprintln!("cd: {directory}: No such file or directory"),
     }
+}
+
+fn parse_tokens(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current_token = String::new();
+    let mut in_single_quotes = false;
+
+    let mut characters = input.trim().chars().peekable();
+
+    while let Some(character) = characters.next() {
+        match character {
+            '\'' => {
+                in_single_quotes = !in_single_quotes;
+                if let Some(next_character) = characters.peek() {
+                    if !current_token.is_empty() {
+                        if !next_character.is_whitespace() && *next_character != '\'' {
+                            // do nothing
+                        } else {
+                            tokens.push(current_token);
+                            current_token = String::new();
+                        }
+                    }
+                }
+            },
+            character if character.is_whitespace() => {
+                if in_single_quotes {
+                    current_token.push(character);
+                } else if !current_token.is_empty() {
+                    tokens.push(current_token);
+                    current_token = String::new();
+                }
+            },
+            _ => current_token.push(character),
+        }
+    }
+
+    if !current_token.is_empty() { tokens.push(current_token); }
+
+    tokens
 }
