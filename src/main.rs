@@ -1,4 +1,5 @@
 #[allow(unused_imports)]
+use std::env::{current_dir, set_current_dir, var};
 use std::io::{self, Write};
 use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
@@ -20,6 +21,7 @@ fn main() {
                 let mut arguments = input.split_whitespace().enumerate();
                 let (_, command) = arguments.next().unwrap();
                 match command {
+                    "cd"   => command_cd(arguments),
                     "echo" => command_echo(arguments),
                     "exit" => command_exit(arguments),
                     "pwd"  => command_pwd(arguments),
@@ -57,7 +59,8 @@ fn command_type(arguments: Enumerate<SplitWhitespace>) {
     for (index, argument) in arguments {
         if index == 1 {
             match argument {
-                "echo" | "exit" | "pwd" | "type" => println!("{argument} is a shell builtin"),
+                "cd" | "echo" | "exit" | "pwd" | "type" =>
+                    println!("{argument} is a shell builtin"),
                 _ => {
                     match search_executable(argument) {
                         Some(full_path_to_executable) => println!("{argument} is {full_path_to_executable}"),
@@ -71,7 +74,7 @@ fn command_type(arguments: Enumerate<SplitWhitespace>) {
 }
 
 fn search_executable(command: &str) -> Option<String> {
-    let paths = std::env::var("PATH").unwrap_or(String::new());
+    let paths = var("PATH").unwrap_or(String::new());
     for path in paths.split(":") {
         let full_path_to_executable = Path::new(path).join(command);
         if full_path_to_executable.is_file() && is_executable(&full_path_to_executable).unwrap_or(false) {
@@ -103,6 +106,18 @@ fn run_executable(command: &str, arguments: Enumerate<SplitWhitespace>) {
 }
 
 fn command_pwd(_arguments: Enumerate<SplitWhitespace>) {
-    let current_directory = std::env::current_dir().unwrap();
+    let current_directory = current_dir().unwrap();
     println!("{}", current_directory.to_string_lossy());
+}
+
+fn command_cd(arguments: Enumerate<SplitWhitespace>) {
+    for (index, argument) in arguments {
+        if index == 1 {
+            match set_current_dir(argument) {
+                Ok(_) => break,
+                Err(_) => eprintln!("cd: {argument}: No such file or directory"),
+            }
+        }
+        break;
+    }
 }
