@@ -57,21 +57,27 @@ fn main() {
     }
 }
 
-fn command_exit(arguments: Enumerate<Iter<String>>, _stdout: OutputRedirection, _stderr: OutputRedirection) {
-    let mut exit_status = 0;
-    for (_index, argument) in arguments.take(1) {
-        exit_status = argument.parse().unwrap_or(1);
+fn command_exit(arguments: Enumerate<Iter<String>>, stdout: OutputRedirection, stderr: OutputRedirection) {
+    if let Some(mut _stdout) = get_output_redirection(stdout) {
+        if let Some(mut _stderr) = get_output_redirection(stderr) {
+            let mut exit_status = 0;
+            for (_index, argument) in arguments.take(1) {
+                exit_status = argument.parse().unwrap_or(1);
+            }
+            std::process::exit(exit_status);
+        }
     }
-    std::process::exit(exit_status);
 }
 
-fn command_echo(arguments: Enumerate<Iter<String>>, stdout: OutputRedirection, _stderr: OutputRedirection) {
+fn command_echo(arguments: Enumerate<Iter<String>>, stdout: OutputRedirection, stderr: OutputRedirection) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
-        for (index, argument) in arguments {
-            if index > 1 { write!(stdout, " ").unwrap_or_default(); }
-            write!(stdout, "{argument}").unwrap_or_default();
+        if let Some(mut _stderr) = get_output_redirection(stderr) {
+            for (index, argument) in arguments {
+                if index > 1 { write!(stdout, " ").unwrap_or_default(); }
+                write!(stdout, "{argument}").unwrap_or_default();
+            }
+            writeln!(stdout).unwrap_or_default();
         }
-        writeln!(stdout).unwrap_or_default();
     }
 }
 
@@ -137,27 +143,31 @@ fn run_executable(command: &str, arguments: Enumerate<Iter<String>>, stdout: Out
     }
 }
 
-fn command_pwd(_arguments: Enumerate<Iter<String>>, stdout: OutputRedirection, _stderr: OutputRedirection) {
+fn command_pwd(_arguments: Enumerate<Iter<String>>, stdout: OutputRedirection, stderr: OutputRedirection) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
-        let current_directory = current_dir().unwrap();
-        writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
+        if let Some(mut _stderr) = get_output_redirection(stderr) {
+            let current_directory = current_dir().unwrap();
+            writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
+        }
     }
 }
 
-fn command_cd(arguments: Enumerate<Iter<String>>, _stdout: OutputRedirection, stderr: OutputRedirection) {
-    if let Some(mut stderr) = get_output_redirection(stderr) {
-        let home_directory = var("HOME").unwrap_or(String::new());
-        let mut directory: &str = "";
-        for (_index, argument) in arguments.take(1) {
-            directory = match argument.as_str() {
-                "~" => &home_directory,
-                _   => argument,
-            };
-        }
-        directory = if directory.is_empty() { &home_directory } else { directory };
-        match set_current_dir(directory) {
-            Ok(_) => (),
-            Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory").unwrap_or_default(),
+fn command_cd(arguments: Enumerate<Iter<String>>, stdout: OutputRedirection, stderr: OutputRedirection) {
+    if let Some(mut _stdout) = get_output_redirection(stdout) {
+        if let Some(mut stderr) = get_output_redirection(stderr) {
+            let home_directory = var("HOME").unwrap_or(String::new());
+            let mut directory: &str = "";
+            for (_index, argument) in arguments.take(1) {
+                directory = match argument.as_str() {
+                    "~" => &home_directory,
+                    _   => argument,
+                };
+            }
+            directory = if directory.is_empty() { &home_directory } else { directory };
+            match set_current_dir(directory) {
+                Ok(_) => (),
+                Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory").unwrap_or_default(),
+            }
         }
     }
 }
