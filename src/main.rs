@@ -1,6 +1,6 @@
 use core::slice::Iter;
 use std::env::{current_dir, set_current_dir, var};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
@@ -284,19 +284,16 @@ fn parse_command(input: &str) -> ParsedCommand {
 fn get_output_redirection(output: OutputRedirection) -> Box<dyn Write> {
     match output.file_name {
         Some(file_name) => {
-            let file = if output.append_to {
-                OpenOptions::new().append(true).create(true).open(file_name).unwrap()
-            } else {
-                File::create(file_name).unwrap()
-            };
-            let writer = io::BufWriter::new(file);
-            Box::new(writer)
-
+            let file = OpenOptions::new().append(output.append_to).create(true).open(file_name);
+            match file {
+                Ok(file) => Box::new(io::BufWriter::new(file)),
+                Err(_) => Box::new(io::stderr().lock()),
+            }
         },
         None => {
             match output.output_type {
-                OutputType::STDOUT => Box::new(io::stdout()),
-                OutputType::STDERR => Box::new(io::stderr()),
+                OutputType::STDOUT => Box::new(io::stdout().lock()),
+                OutputType::STDERR => Box::new(io::stderr().lock()),
             }
         },
     }
