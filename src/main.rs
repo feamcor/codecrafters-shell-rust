@@ -120,7 +120,14 @@ fn run_executable(command: &str, arguments: Enumerate<Iter<String>>, stdout: Out
                         .args(arguments.map(|(_, argument)| argument))
                         .output();
                     match output {
-                        Ok(output) => write!(stdout, "{}", String::from_utf8_lossy(&output.stdout)).unwrap_or_default(),
+                        Ok(output) => {
+                            if !output.stdout.is_empty() {
+                                write!(stdout, "{}", String::from_utf8_lossy(&output.stdout)).unwrap_or_default();
+                            }
+                            if !output.stderr.is_empty() {
+                                write!(stderr, "{}", String::from_utf8_lossy(&output.stderr)).unwrap_or_default();
+                            }
+                        },
                         Err(e) => writeln!(stderr, "{e}").unwrap_or_default(),
                     }
                 },
@@ -219,7 +226,7 @@ fn parse_command(input: &str) -> ParsedCommand {
                     escape_next_char = true;
                 }
             },
-            file_descriptor if file_descriptor == '1' && !escape_next_char && !in_single_quotes && !in_double_quotes => {
+            file_descriptor if file_descriptor == '1' && current_token.is_empty() => {
                 if let Some(next_character) = characters.peek() {
                     if *next_character == '>' {
                         in_stdout_redirection = true;
@@ -229,7 +236,7 @@ fn parse_command(input: &str) -> ParsedCommand {
                     }
                 }
             },
-            file_descriptor if file_descriptor == '2' && !escape_next_char && !in_single_quotes && !in_double_quotes => {
+            file_descriptor if file_descriptor == '2' && current_token.is_empty() => {
                 if let Some(next_character) = characters.peek() {
                     if *next_character == '>' {
                         in_stderr_redirection = true;
@@ -291,7 +298,7 @@ fn parse_command(input: &str) -> ParsedCommand {
 fn get_output_redirection(output: OutputRedirection) -> Option<Box<dyn Write>> {
     match output.file_name {
         Some(file_name) => {
-            let file = OpenOptions::new().append(output.append_to).create(true).open(file_name);
+            let file = OpenOptions::new().append(output.append_to).write(true).create(true).open(file_name);
             match file {
                 Ok(file) => Some(Box::new(io::BufWriter::new(file))),
                 Err(e) => {
