@@ -7,6 +7,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
 use std::iter::Enumerate;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -41,21 +42,42 @@ struct ShellHelper {
     completer: ShellCompleter,
 }
 
+impl Highlighter for ShellHelper {}
+
 struct ShellCompleter {
     commands: Vec<String>,
 }
 
 impl ShellCompleter {
     fn new() -> Self {
-        Self {
-            commands: vec![
-                "cd ".to_string(),
-                "echo ".to_string(),
-                "exit ".to_string(),
-                "pwd".to_string(),
-                "type ".to_string(),
-            ],
+        let mut commands = vec![
+            "cd".to_string(),
+            "echo".to_string(),
+            "exit".to_string(),
+            "pwd".to_string(),
+            "type".to_string(),
+        ];
+
+        if let Ok(path_var) = var("PATH") {
+            for path_dir in path_var.split(":") {
+                if let Ok(entries) = std::fs::read_dir(path_dir) {
+                    for entry in entries.flatten() {
+                        if let Ok(metadata) = entry.metadata() {
+                            if metadata.is_file() && (metadata.permissions().mode() & 0o111 != 0) {
+                                if let Some(file_name) = entry.file_name().into_string().ok() {
+                                    commands.push(file_name)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        commands.sort_unstable();
+        commands.dedup();
+
+        Self { commands }
     }
 }
 
@@ -77,18 +99,16 @@ impl Completer for ShellCompleter {
 
         let mut candidates = Vec::new();
         for command in &self.commands {
-            if command.starts_with(&word) {
+            if command.starts_with(word) {
                 candidates.push(Pair {
                     display: command.clone(),
-                    replacement: command.clone(),
+                    replacement: format!("{command} "),
                 });
             }
         }
         Ok((start, candidates))
     }
 }
-
-impl Highlighter for ShellHelper {}
 
 fn main() -> Result<()> {
     let helper = ShellHelper {
@@ -197,6 +217,12 @@ fn command_type(
     }
 }
 
+fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::metadata(full_path_to_executable)?;
+    Ok(metadata.permissions().mode() & 0o111 != 0)
+}
+
 fn search_executable(command: &str) -> Option<String> {
     let paths = var("PATH").unwrap_or(String::new());
     for path in paths.split(":") {
@@ -210,12 +236,6 @@ fn search_executable(command: &str) -> Option<String> {
     None
 }
 
-fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
-    use std::os::unix::fs::PermissionsExt;
-    let metadata = std::fs::metadata(full_path_to_executable)?;
-    Ok(metadata.permissions().mode() & 0o111 != 0)
-}
-
 fn run_executable(
     command: &str,
     arguments: Enumerate<Iter<String>>,
@@ -224,7 +244,12 @@ fn run_executable(
 ) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
         if let Some(mut stderr) = get_output_redirection(stderr) {
-            match search_executable(command) {
+            let command_path = if Path::new(command).is_absolute() {
+                Some(command.to_string())
+            } else {
+                search_executable(command)
+            };
+            match command_path {
                 Some(_) => {
                     let output = Command::new(command)
                         .args(arguments.map(|(_, argument)| argument))
@@ -283,7 +308,7 @@ fn command_cd(
                 directory
             };
             match set_current_dir(directory) {
-                Ok(_) => (),
+                Ok(_) => {},
                 Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory")
                     .unwrap_or_default(),
             }
