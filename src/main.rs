@@ -17,6 +17,7 @@ use rustyline::completion::Pair;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::Result;
+use rustyline::config::{BellStyle, CompletionType, Config};
 use rustyline::{Completer, Context, Editor, Helper, Hinter, Validator};
 
 enum OutputType {
@@ -59,12 +60,12 @@ impl ShellCompleter {
         ];
 
         if let Ok(path_var) = var("PATH") {
-            for path_dir in path_var.split(":") {
-                if let Ok(entries) = std::fs::read_dir(path_dir) {
-                    for entry in entries.flatten() {
-                        if let Ok(metadata) = entry.metadata() {
-                            if metadata.is_file() && (metadata.permissions().mode() & 0o111 != 0) {
-                                if let Some(file_name) = entry.file_name().into_string().ok() {
+            for path_dir in path_var.split(':') {
+                if let Ok(dir_entries) = std::fs::read_dir(path_dir) {
+                    for dir_entry in dir_entries.flatten() {
+                        if let Ok(entry_metadata) = dir_entry.metadata() {
+                            if entry_metadata.is_file() && (entry_metadata.permissions().mode() & 0o111 != 0) {
+                                if let Some(file_name) = dir_entry.file_name().into_string().ok() {
                                     commands.push(file_name)
                                 }
                             }
@@ -114,7 +115,11 @@ fn main() -> Result<()> {
     let helper = ShellHelper {
         completer: ShellCompleter::new(),
     };
-    let mut readline = Editor::new()?;
+    let config = Config::builder()
+        .completion_type(CompletionType::List)
+        .bell_style(BellStyle::Audible)
+        .build();
+    let mut readline = Editor::with_config(config)?;
     readline.set_helper(Some(helper));
 
     loop {
@@ -163,8 +168,8 @@ fn command_exit(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(mut _stdout) = get_output_redirection(stdout) {
-        if let Some(mut _stderr) = get_output_redirection(stderr) {
+    if let Some(_stdout) = get_output_redirection(stdout) {
+        if let Some(_stderr) = get_output_redirection(stderr) {
             let mut exit_status = 0;
             for (_index, argument) in arguments.take(1) {
                 exit_status = argument.parse().unwrap_or(1);
@@ -180,7 +185,7 @@ fn command_echo(
     stderr: OutputRedirection,
 ) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(mut _stderr) = get_output_redirection(stderr) {
+        if let Some(_stderr) = get_output_redirection(stderr) {
             for (index, argument) in arguments {
                 if index > 1 {
                     write!(stdout, " ").unwrap_or_default();
@@ -224,9 +229,9 @@ fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
 }
 
 fn search_executable(command: &str) -> Option<String> {
-    let paths = var("PATH").unwrap_or(String::new());
-    for path in paths.split(":") {
-        let full_path_to_executable = Path::new(path).join(command);
+    let path_var = var("PATH").unwrap_or(String::new());
+    for path_dir in path_var.split(':') {
+        let full_path_to_executable = Path::new(path_dir).join(command);
         if full_path_to_executable.is_file()
             && is_executable(&full_path_to_executable).unwrap_or(false)
         {
@@ -280,7 +285,7 @@ fn command_pwd(
     stderr: OutputRedirection,
 ) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(mut _stderr) = get_output_redirection(stderr) {
+        if let Some(_stderr) = get_output_redirection(stderr) {
             let current_directory = current_dir().unwrap();
             writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
         }
@@ -292,7 +297,7 @@ fn command_cd(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(mut _stdout) = get_output_redirection(stdout) {
+    if let Some(_stdout) = get_output_redirection(stdout) {
         if let Some(mut stderr) = get_output_redirection(stderr) {
             let home_directory = var("HOME").unwrap_or(String::new());
             let mut directory: &str = "";
