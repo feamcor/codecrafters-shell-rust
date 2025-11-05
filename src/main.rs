@@ -45,16 +45,9 @@ const STDOUT_FILE_DESCRIPTOR: char = '1';
 const STDOUT_STDERR_FILE_DESCRIPTOR: char = '&';
 
 #[derive(Clone)]
-enum OutputType {
-    STDOUT = 1,
-    STDERR = 2,
-}
-
-#[derive(Clone)]
 struct OutputRedirection {
     file_name: Option<String>,
     append_to: bool,
-    output_type: OutputType,
 }
 
 #[derive(Clone)]
@@ -256,15 +249,14 @@ fn command_exit(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(_stdout) = get_output_redirection(stdout) {
-        if let Some(_stderr) = get_output_redirection(stderr) {
-            let mut exit_status = 0;
-            for (_index, argument) in arguments.take(1) {
-                exit_status = argument.parse().unwrap_or(1);
-            }
-            std::process::exit(exit_status);
-        }
+    let _stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
+    let _stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
+
+    let mut exit_status = 0;
+    for (_index, argument) in arguments.take(1) {
+        exit_status = argument.parse().unwrap_or(1);
     }
+    std::process::exit(exit_status);
 }
 
 fn command_echo(
@@ -272,28 +264,26 @@ fn command_echo(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(_stderr) = get_output_redirection(stderr) {
-            let mut expand_escape = false;
-            for (index, argument) in arguments {
-                if index == 1 && argument == COMMAND_ECHO_FLAG_EXPAND_ESCAPE {
-                    expand_escape = true;
-                    continue;
-                }
-                if !(expand_escape && index == 2) && index > 1 {
-                    write!(stdout, " ").unwrap_or_default();
-                }
-                if expand_escape {
-                    write!(stdout, "{}", expand_escape_sequences(&argument)).unwrap_or_default();
-                } else {
-                    write!(stdout, "{}", argument).unwrap_or_default();
-                };
+    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
+    let _stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
 
-            }
-            writeln!(stdout).unwrap_or_default();
-            stdout.flush().unwrap_or_default();
+    let mut expand_escape = false;
+    for (index, argument) in arguments {
+        if index == 1 && argument == COMMAND_ECHO_FLAG_EXPAND_ESCAPE {
+            expand_escape = true;
+            continue;
         }
+        if !(expand_escape && index == 2) && index > 1 {
+            write!(stdout, " ").unwrap_or_default();
+        }
+        if expand_escape {
+            write!(stdout, "{}", expand_escape_sequences(&argument)).unwrap_or_default();
+        } else {
+            write!(stdout, "{}", argument).unwrap_or_default();
+        };
     }
+    writeln!(stdout).unwrap_or_default();
+    stdout.flush().unwrap_or_default();
 }
 
 fn command_type(
@@ -301,26 +291,25 @@ fn command_type(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(mut stderr) = get_output_redirection(stderr) {
-            for (_index, argument) in arguments.take(1) {
-                match argument.as_str() {
-                    COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE => {
-                        writeln!(stdout, "{argument} is a shell builtin").unwrap_or_default()
-                    }
-                    _ => match search_executable(&*argument) {
-                        Some(full_path_to_executable) => {
-                            writeln!(stdout, "{argument} is {full_path_to_executable}")
-                                .unwrap_or_default()
-                        }
-                        None => writeln!(stderr, "{argument}: not found").unwrap_or_default(),
-                    },
-                }
+    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
+    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
+
+    for (_index, argument) in arguments.take(1) {
+        match argument.as_str() {
+            COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE => {
+                writeln!(stdout, "{argument} is a shell builtin").unwrap_or_default()
             }
-            stdout.flush().unwrap_or_default();
-            stderr.flush().unwrap_or_default();
+            _ => match search_executable(&*argument) {
+                Some(full_path_to_executable) => {
+                    writeln!(stdout, "{argument} is {full_path_to_executable}")
+                        .unwrap_or_default()
+                }
+                None => writeln!(stderr, "{argument}: not found").unwrap_or_default(),
+            },
         }
     }
+    stdout.flush().unwrap_or_default();
+    stderr.flush().unwrap_or_default();
 }
 
 fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
@@ -350,43 +339,43 @@ fn run_executable(
     stderr: OutputRedirection,
     child: Option<Child>,
 ) -> Result<(), io::Error> {
-    if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(mut stderr) = get_output_redirection(stderr) {
-            let command_path = if Path::new(command).is_absolute() {
-                Some(command.to_string())
-            } else {
-                search_executable(command)
-            };
-            match command_path {
-                Some(_) => {
-                    let output = Command::new(command)
-                        .args(arguments.map(|(_, argument)| argument))
-                        .stdin(stdin)
-                        .output();
-                    if let Some(mut child) = child {
-                        match child.wait() {
-                            Ok(_) => {}
-                            Err(e) => return Err(e),
-                        }
+    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
+    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
+
+    let command_path = if Path::new(command).is_absolute() {
+        Some(command.to_string())
+    } else {
+        search_executable(command)
+    };
+    match command_path {
+        Some(_) => {
+            let output = Command::new(command)
+                .args(arguments.map(|(_, argument)| argument))
+                .stdin(stdin)
+                .output();
+            if let Some(mut child) = child {
+                match child.wait() {
+                    Ok(_) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            match output {
+                Ok(output) => {
+                    if !output.stdout.is_empty() {
+                        stdout.write_all(&output.stdout)?;
                     }
-                    match output {
-                        Ok(output) => {
-                            if !output.stdout.is_empty() {
-                                stdout.write_all(&output.stdout)?;
-                            }
-                            if !output.stderr.is_empty() {
-                                stderr.write_all(&output.stderr)?;
-                            }
-                        }
-                        Err(e) => return Err(e),
+                    if !output.stderr.is_empty() {
+                        stderr.write_all(&output.stderr)?;
                     }
                 }
-                None => writeln!(stderr, "{command}: command not found")?,
+                Err(e) => return Err(e),
             }
-            stdout.flush()?;
-            stderr.flush()?;
         }
+        None => writeln!(stderr, "{command}: command not found")?,
     }
+    stdout.flush()?;
+    stderr.flush()?;
+
     Ok(())
 }
 
@@ -395,14 +384,13 @@ fn command_pwd(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(mut stderr) = get_output_redirection(stderr) {
-            let current_directory = current_dir().unwrap();
-            writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
-            stdout.flush().unwrap_or_default();
-            stderr.flush().unwrap_or_default();
-        }
-    }
+    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
+    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
+
+    let current_directory = current_dir().unwrap();
+    writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
+    stdout.flush().unwrap_or_default();
+    stderr.flush().unwrap_or_default();
 }
 
 fn command_cd(
@@ -410,26 +398,25 @@ fn command_cd(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(mut stderr) = get_output_redirection(stderr) {
-            let home_directory = var(ENVIRONMENT_VARIABLE_HOME).unwrap_or(String::new());
-            let argument = arguments.next();
-            let directory = match argument {
-                Some((_index, path)) => match path.as_str() {
-                    HOME_DIRECTORY => home_directory,
-                    _ => path,
-                },
-                None => home_directory,
-            };
-            match set_current_dir(&directory) {
-                Ok(_) => {}
-                Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory")
-                    .unwrap_or_default(),
-            }
-            stdout.flush().unwrap_or_default();
-            stderr.flush().unwrap_or_default();
-        }
+    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
+    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
+
+    let home_directory = var(ENVIRONMENT_VARIABLE_HOME).unwrap_or(String::new());
+    let argument = arguments.next();
+    let directory = match argument {
+        Some((_index, path)) => match path.as_str() {
+            HOME_DIRECTORY => home_directory,
+            _ => path,
+        },
+        None => home_directory,
+    };
+    match set_current_dir(&directory) {
+        Ok(_) => {}
+        Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory")
+            .unwrap_or_default(),
     }
+    stdout.flush().unwrap_or_default();
+    stderr.flush().unwrap_or_default();
 }
 
 fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
@@ -441,12 +428,10 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
         let mut stdout: OutputRedirection = OutputRedirection {
             file_name: None,
             append_to: false,
-            output_type: OutputType::STDOUT,
         };
         let mut stderr: OutputRedirection = OutputRedirection {
             file_name: None,
             append_to: false,
-            output_type: OutputType::STDERR,
         };
 
         let mut current_token = String::new();
@@ -653,10 +638,7 @@ fn get_output_redirection(output: OutputRedirection) -> Option<Box<dyn Write>> {
                 }
             }
         }
-        None => match output.output_type {
-            OutputType::STDOUT => Some(Box::new(io::stdout().lock())),
-            OutputType::STDERR => Some(Box::new(io::stderr().lock())),
-        },
+        None => None,
     }
 }
 
