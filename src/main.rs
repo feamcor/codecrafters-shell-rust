@@ -278,6 +278,7 @@ fn command_echo(
                 write!(stdout, "{argument}").unwrap_or_default();
             }
             writeln!(stdout).unwrap_or_default();
+            stdout.flush().unwrap_or_default();
         }
     }
 }
@@ -303,6 +304,8 @@ fn command_type(
                     },
                 }
             }
+            stdout.flush().unwrap_or_default();
+            stderr.flush().unwrap_or_default();
         }
     }
 }
@@ -367,6 +370,8 @@ fn run_executable(
                 }
                 None => writeln!(stderr, "{command}: command not found")?,
             }
+            stdout.flush()?;
+            stderr.flush()?;
         }
     }
     Ok(())
@@ -378,9 +383,11 @@ fn command_pwd(
     stderr: OutputRedirection,
 ) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
-        if let Some(_stderr) = get_output_redirection(stderr) {
+        if let Some(mut stderr) = get_output_redirection(stderr) {
             let current_directory = current_dir().unwrap();
             writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
+            stdout.flush().unwrap_or_default();
+            stderr.flush().unwrap_or_default();
         }
     }
 }
@@ -390,7 +397,7 @@ fn command_cd(
     stdout: OutputRedirection,
     stderr: OutputRedirection,
 ) {
-    if let Some(_stdout) = get_output_redirection(stdout) {
+    if let Some(mut stdout) = get_output_redirection(stdout) {
         if let Some(mut stderr) = get_output_redirection(stderr) {
             let home_directory = var(ENVIRONMENT_VARIABLE_HOME).unwrap_or(String::new());
             let argument = arguments.next();
@@ -406,6 +413,8 @@ fn command_cd(
                 Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory")
                     .unwrap_or_default(),
             }
+            stdout.flush().unwrap_or_default();
+            stderr.flush().unwrap_or_default();
         }
     }
 }
