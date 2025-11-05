@@ -19,16 +19,19 @@ use std::vec::IntoIter;
 
 const CHAR_BACKSLASH: char = '\\';
 const CHAR_BACKTICK: char = '`';
+const CHAR_CARRIAGE_RETURN: char = '\r';
 const CHAR_EXCLAMATION_MARK: char = '!';
 const CHAR_DOLLAR_SIGN: char = '$';
 const CHAR_DOUBLE_QUOTE: char = '"';
 const CHAR_GREATER_THAN: char = '>';
 const CHAR_NEWLINE: char = '\n';
+const CHAR_NULL: char = '\0';
 const CHAR_PIPE: char = '|';
 const CHAR_SINGLE_QUOTE: char = '\'';
 const CHAR_TAB: char = '\t';
 const COMMAND_CD: &str = "cd";
 const COMMAND_ECHO: &str = "echo";
+const COMMAND_ECHO_FLAG_EXPAND_ESCAPE: &str = "-e";
 const COMMAND_EXIT: &str = "exit";
 const COMMAND_PWD: &str = "pwd";
 const COMMAND_TYPE: &str = "type";
@@ -271,11 +274,21 @@ fn command_echo(
 ) {
     if let Some(mut stdout) = get_output_redirection(stdout) {
         if let Some(_stderr) = get_output_redirection(stderr) {
+            let mut expand_escape = false;
             for (index, argument) in arguments {
-                if index > 1 {
+                if index == 1 && argument == COMMAND_ECHO_FLAG_EXPAND_ESCAPE {
+                    expand_escape = true;
+                    continue;
+                }
+                if !(expand_escape && index == 2) && index > 1 {
                     write!(stdout, " ").unwrap_or_default();
                 }
-                write!(stdout, "{argument}").unwrap_or_default();
+                if expand_escape {
+                    write!(stdout, "{}", expand_escape_sequences(&argument)).unwrap_or_default();
+                } else {
+                    write!(stdout, "{}", argument).unwrap_or_default();
+                };
+
             }
             writeln!(stdout).unwrap_or_default();
             stdout.flush().unwrap_or_default();
@@ -442,7 +455,6 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
         let mut escape_next_char = false;
         let mut in_stdout_redirection = false;
         let mut in_stderr_redirection = false;
-        let mut is_command_echo = false;
 
         while let Some(character) = characters.next() {
             match character {
@@ -493,14 +505,6 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                                 | CHAR_DOLLAR_SIGN
                                 | CHAR_DOUBLE_QUOTE
                                 | CHAR_EXCLAMATION_MARK => escape_next_char = true,
-                                'n' if is_command_echo => {
-                                    current_token.push(CHAR_NEWLINE);
-                                    characters.next();
-                                }
-                                't' if is_command_echo => {
-                                    current_token.push(CHAR_TAB);
-                                    characters.next();
-                                }
                                 _ => current_token.push(character),
                             }
                         }
@@ -590,7 +594,6 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                             stderr.file_name = Some(current_token);
                             in_stderr_redirection = false;
                         } else {
-                            is_command_echo = tokens.is_empty() && current_token == COMMAND_ECHO;
                             tokens.push(current_token);
                         }
                         current_token = String::new();
@@ -655,4 +658,33 @@ fn get_output_redirection(output: OutputRedirection) -> Option<Box<dyn Write>> {
             OutputType::STDERR => Some(Box::new(io::stderr().lock())),
         },
     }
+}
+
+fn expand_escape_sequences(string: &str) -> String {
+    let mut result = String::with_capacity(string.len());
+    let mut characters = string.chars();
+
+    while let Some(character) = characters.next() {
+        if character == CHAR_BACKSLASH {
+            if let Some(next) = characters.next() {
+                match next {
+                    'n' => result.push(CHAR_NEWLINE),
+                    't' => result.push(CHAR_TAB),
+                    'r' => result.push(CHAR_CARRIAGE_RETURN),
+                    CHAR_BACKSLASH => result.push(CHAR_BACKSLASH),
+                    '0' => result.push(CHAR_NULL),
+                    CHAR_DOUBLE_QUOTE => result.push(CHAR_DOUBLE_QUOTE),
+                    CHAR_SINGLE_QUOTE => result.push(CHAR_SINGLE_QUOTE),
+                    _ => {
+                        result.push(CHAR_BACKSLASH);
+                        result.push(next);
+                    }
+                }
+            }
+        } else {
+            result.push(character);
+        }
+    }
+
+    result
 }
