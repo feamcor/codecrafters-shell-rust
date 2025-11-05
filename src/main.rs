@@ -23,10 +23,10 @@ const CHAR_EXCLAMATION_MARK: char = '!';
 const CHAR_DOLLAR_SIGN: char = '$';
 const CHAR_DOUBLE_QUOTE: char = '"';
 const CHAR_GREATER_THAN: char = '>';
-// const CHAR_NEWLINE: char = '\n';
+const CHAR_NEWLINE: char = '\n';
 const CHAR_PIPE: char = '|';
 const CHAR_SINGLE_QUOTE: char = '\'';
-// const CHAR_TAB: char = '\t';
+const CHAR_TAB: char = '\t';
 const COMMAND_CD: &str = "cd";
 const COMMAND_ECHO: &str = "echo";
 const COMMAND_EXIT: &str = "exit";
@@ -433,6 +433,7 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
         let mut escape_next_char = false;
         let mut in_stdout_redirection = false;
         let mut in_stderr_redirection = false;
+        let mut is_command_echo = false;
 
         while let Some(character) = characters.next() {
             match character {
@@ -483,14 +484,14 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                                 | CHAR_DOLLAR_SIGN
                                 | CHAR_DOUBLE_QUOTE
                                 | CHAR_EXCLAMATION_MARK => escape_next_char = true,
-                                // 'n' => {
-                                //     current_token.push(CHAR_NEWLINE);
-                                //     characters.next();
-                                // }
-                                // 't' => {
-                                //     current_token.push(CHAR_TAB);
-                                //     characters.next();
-                                // }
+                                'n' if is_command_echo => {
+                                    current_token.push(CHAR_NEWLINE);
+                                    characters.next();
+                                }
+                                't' if is_command_echo => {
+                                    current_token.push(CHAR_TAB);
+                                    characters.next();
+                                }
                                 _ => current_token.push(character),
                             }
                         }
@@ -580,6 +581,7 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                             stderr.file_name = Some(current_token);
                             in_stderr_redirection = false;
                         } else {
+                            is_command_echo = tokens.is_empty() && current_token == COMMAND_ECHO;
                             tokens.push(current_token);
                         }
                         current_token = String::new();
