@@ -173,8 +173,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(tokens) => tokens.into_iter().enumerate(),
                         None => continue 'repl,
                     };
-                    let stdout = get_output_redirection(parsed_command.stdout).unwrap_or(Box::new(io::stdout()));
-                    let stderr = get_output_redirection(parsed_command.stderr).unwrap_or(Box::new(io::stderr()));
+                    let mut stdout = get_output_redirection(parsed_command.stdout)
+                        .unwrap_or(Box::new(io::stdout()));
+                    let mut stderr = get_output_redirection(parsed_command.stderr)
+                        .unwrap_or(Box::new(io::stderr()));
                     let (_, command) = arguments.next().unwrap();
                     match command.as_str() {
                         COMMAND_CD => {
@@ -199,11 +201,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &command,
                                     arguments,
                                     Stdio::null(),
-                                    stdout,
-                                    stderr,
+                                    &mut stdout,
+                                    &mut stderr,
                                     None,
                                 ) {
-                                    eprintln!("Error: {:?}", e);
+                                    writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
                                 }
                             } else if index == 0 {
                                 // first command in the pipeline
@@ -216,7 +218,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     previous_output = child.stdout.take();
                                     previous_child = Some(child);
                                 } else {
-                                    eprintln!("Error: Failed to spawn child process {}", command);
+                                    writeln!(
+                                        stderr,
+                                        "Error: Failed to spawn child process {}",
+                                        command
+                                    )
+                                    .unwrap_or_default();
                                 }
                             } else if index < pipeline_length - 1 {
                                 // middle command in the pipeline
@@ -234,7 +241,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     previous_output = child.stdout.take();
                                     previous_child = Some(child);
                                 } else {
-                                    eprintln!("Error: Failed to spawn child process {}", command);
+                                    writeln!(
+                                        stderr,
+                                        "Error: Failed to spawn child process {}",
+                                        command
+                                    )
+                                    .unwrap_or_default();
                                 }
                             } else {
                                 // last command in the pipeline
@@ -242,11 +254,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &command,
                                     arguments,
                                     Stdio::from(previous_output.take().unwrap()),
-                                    stdout,
-                                    stderr,
+                                    &mut stdout,
+                                    &mut stderr,
                                     previous_child.take(),
                                 ) {
-                                    eprintln!("Error: {:?}", e);
+                                    writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
                                 }
                             }
                         }
@@ -341,8 +353,8 @@ fn run_executable(
     command: &str,
     arguments: Enumerate<IntoIter<String>>,
     stdin: Stdio,
-    mut stdout: Box<dyn Write>,
-    mut stderr: Box<dyn Write>,
+    stdout: &mut Box<dyn Write>,
+    stderr: &mut Box<dyn Write>,
     child: Option<Child>,
 ) -> Result<(), io::Error> {
     let command_path = if Path::new(command).is_absolute() {
