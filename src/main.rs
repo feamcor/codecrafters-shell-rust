@@ -235,7 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 {
                                     if let Some(mut previous_child) = previous_child.take() {
                                         if let Err(e) = previous_child.wait() {
-                                            eprintln!("Error: {:?}", e);
+                                            writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
                                         }
                                     }
                                     previous_output = child.stdout.take();
