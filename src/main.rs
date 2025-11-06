@@ -173,22 +173,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(tokens) => tokens.into_iter().enumerate(),
                         None => continue 'repl,
                     };
+                    let stdout = get_output_redirection(parsed_command.stdout).unwrap_or(Box::new(io::stdout()));
+                    let stderr = get_output_redirection(parsed_command.stderr).unwrap_or(Box::new(io::stderr()));
                     let (_, command) = arguments.next().unwrap();
                     match command.as_str() {
                         COMMAND_CD => {
-                            command_cd(arguments, parsed_command.stdout, parsed_command.stderr);
+                            command_cd(arguments, stdout, stderr);
                         }
                         COMMAND_ECHO => {
-                            command_echo(arguments, parsed_command.stdout, parsed_command.stderr);
+                            command_echo(arguments, stdout, stderr);
                         }
                         COMMAND_EXIT => {
-                            command_exit(arguments, parsed_command.stdout, parsed_command.stderr);
+                            command_exit(arguments, stdout, stderr);
                         }
                         COMMAND_PWD => {
-                            command_pwd(arguments, parsed_command.stdout, parsed_command.stderr);
+                            command_pwd(arguments, stdout, stderr);
                         }
                         COMMAND_TYPE => {
-                            command_type(arguments, parsed_command.stdout, parsed_command.stderr);
+                            command_type(arguments, stdout, stderr);
                         }
                         _ => {
                             if pipeline_length == 1 {
@@ -197,8 +199,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &command,
                                     arguments,
                                     Stdio::null(),
-                                    parsed_command.stdout,
-                                    parsed_command.stderr,
+                                    stdout,
+                                    stderr,
                                     None,
                                 ) {
                                     eprintln!("Error: {:?}", e);
@@ -240,8 +242,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &command,
                                     arguments,
                                     Stdio::from(previous_output.take().unwrap()),
-                                    parsed_command.stdout,
-                                    parsed_command.stderr,
+                                    stdout,
+                                    stderr,
                                     previous_child.take(),
                                 ) {
                                     eprintln!("Error: {:?}", e);
@@ -260,12 +262,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn command_exit(
     arguments: Enumerate<IntoIter<String>>,
-    stdout: OutputRedirection,
-    stderr: OutputRedirection,
+    _stdout: Box<dyn Write>,
+    _stderr: Box<dyn Write>,
 ) {
-    let _stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
-    let _stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
-
     let mut exit_status = 0;
     for (_index, argument) in arguments.take(1) {
         exit_status = argument.parse().unwrap_or(1);
@@ -275,12 +274,9 @@ fn command_exit(
 
 fn command_echo(
     arguments: Enumerate<IntoIter<String>>,
-    stdout: OutputRedirection,
-    stderr: OutputRedirection,
+    mut stdout: Box<dyn Write>,
+    _stderr: Box<dyn Write>,
 ) {
-    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
-    let _stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
-
     let mut expand_escape = false;
     for (index, argument) in arguments {
         if index == 1 && argument == COMMAND_ECHO_FLAG_EXPAND_ESCAPE {
@@ -302,12 +298,9 @@ fn command_echo(
 
 fn command_type(
     arguments: Enumerate<IntoIter<String>>,
-    stdout: OutputRedirection,
-    stderr: OutputRedirection,
+    mut stdout: Box<dyn Write>,
+    mut stderr: Box<dyn Write>,
 ) {
-    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
-    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
-
     for (_index, argument) in arguments.take(1) {
         match argument.as_str() {
             COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE => {
@@ -348,13 +341,10 @@ fn run_executable(
     command: &str,
     arguments: Enumerate<IntoIter<String>>,
     stdin: Stdio,
-    stdout: OutputRedirection,
-    stderr: OutputRedirection,
+    mut stdout: Box<dyn Write>,
+    mut stderr: Box<dyn Write>,
     child: Option<Child>,
 ) -> Result<(), io::Error> {
-    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
-    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
-
     let command_path = if Path::new(command).is_absolute() {
         Some(command.to_string())
     } else {
@@ -394,12 +384,9 @@ fn run_executable(
 
 fn command_pwd(
     _arguments: Enumerate<IntoIter<String>>,
-    stdout: OutputRedirection,
-    stderr: OutputRedirection,
+    mut stdout: Box<dyn Write>,
+    mut stderr: Box<dyn Write>,
 ) {
-    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
-    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
-
     let current_directory = current_dir().unwrap();
     writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
     stdout.flush().unwrap_or_default();
@@ -408,12 +395,9 @@ fn command_pwd(
 
 fn command_cd(
     mut arguments: Enumerate<IntoIter<String>>,
-    stdout: OutputRedirection,
-    stderr: OutputRedirection,
+    mut stdout: Box<dyn Write>,
+    mut stderr: Box<dyn Write>,
 ) {
-    let mut stdout = get_output_redirection(stdout).unwrap_or(Box::new(io::stdout()));
-    let mut stderr = get_output_redirection(stderr).unwrap_or(Box::new(io::stderr()));
-
     let home_directory = var(ENVIRONMENT_VARIABLE_HOME).unwrap_or(String::new());
     let argument = arguments.next();
     let directory = match argument {
