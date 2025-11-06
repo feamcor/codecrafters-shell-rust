@@ -169,6 +169,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut previous_child = None;
                 let mut previous_output = None;
                 for (index, parsed_command) in parsed_commands.into_iter().enumerate() {
+                    let inherit_stdout = parsed_command.stdout.file_name.is_none();
+                    let inherit_stderr = parsed_command.stderr.file_name.is_none();
                     let mut arguments = match parsed_command.tokens {
                         Some(tokens) => tokens.into_iter().enumerate(),
                         None => continue 'repl,
@@ -203,20 +205,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Stdio::null(),
                                     &mut stdout,
                                     &mut stderr,
+                                    inherit_stdout,
+                                    inherit_stderr,
                                     None,
                                 ) {
                                     writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
                                 }
                             } else if index == 0 {
                                 // first command in the pipeline
-                                if let Ok(mut child) = Command::new(&command)
+                                if let Ok(mut spawned) = Command::new(&command)
                                     .args(arguments.map(|(_, argument)| argument))
                                     .stdin(Stdio::null())
                                     .stdout(Stdio::piped())
                                     .spawn()
                                 {
-                                    previous_output = child.stdout.take();
-                                    previous_child = Some(child);
+                                    previous_output = spawned.stdout.take();
+                                    previous_child = Some(spawned);
                                 } else {
                                     writeln!(
                                         stderr,
@@ -227,7 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             } else if index < pipeline_length - 1 {
                                 // middle command in the pipeline
-                                if let Ok(mut child) = Command::new(&command)
+                                if let Ok(mut spawned) = Command::new(&command)
                                     .args(arguments.map(|(_, argument)| argument))
                                     .stdin(Stdio::from(previous_output.take().unwrap()))
                                     .stdout(Stdio::piped())
@@ -238,8 +242,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
                                         }
                                     }
-                                    previous_output = child.stdout.take();
-                                    previous_child = Some(child);
+                                    previous_output = spawned.stdout.take();
+                                    previous_child = Some(spawned);
                                 } else {
                                     writeln!(
                                         stderr,
@@ -256,6 +260,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Stdio::from(previous_output.take().unwrap()),
                                     &mut stdout,
                                     &mut stderr,
+                                    inherit_stdout,
+                                    inherit_stderr,
                                     previous_child.take(),
                                 ) {
                                     writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
@@ -355,6 +361,8 @@ fn run_executable(
     stdin: Stdio,
     stdout: &mut Box<dyn Write>,
     stderr: &mut Box<dyn Write>,
+    inherit_stdout: bool,
+    inherit_stderr: bool,
     child: Option<Child>,
 ) -> Result<(), io::Error> {
     let command_path = if Path::new(command).is_absolute() {
@@ -364,32 +372,44 @@ fn run_executable(
     };
     match command_path {
         Some(_) => {
-            let output = Command::new(command)
-                .args(arguments.map(|(_, argument)| argument))
-                .stdin(stdin)
-                .output();
-            if let Some(mut child) = child {
-                match child.wait() {
-                    Ok(_) => {}
+            if inherit_stdout && inherit_stderr {
+                let mut spawned = Command::new(command)
+                    .args(arguments.map(|(_, argument)| argument))
+                    .stdin(stdin)
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .spawn()?;
+
+                if let Some(mut previous_child) = child {
+                    let _status = previous_child.wait();
+                }
+
+                let _status = spawned.wait();
+            } else {
+                let output = Command::new(command)
+                    .args(arguments.map(|(_, argument)| argument))
+                    .stdin(stdin)
+                    .output();
+
+                if let Some(mut previous_child) = child {
+                    let _status = previous_child.wait();
+                }
+
+                match output {
+                    Ok(output) => {
+                        if !output.stdout.is_empty() {
+                            stdout.write_all(&output.stdout)?;
+                        }
+                        if !output.stderr.is_empty() {
+                            stderr.write_all(&output.stderr)?;
+                        }
+                    }
                     Err(e) => return Err(e),
                 }
-            }
-            match output {
-                Ok(output) => {
-                    if !output.stdout.is_empty() {
-                        stdout.write_all(&output.stdout)?;
-                    }
-                    if !output.stderr.is_empty() {
-                        stderr.write_all(&output.stderr)?;
-                    }
-                }
-                Err(e) => return Err(e),
             }
         }
         None => writeln!(stderr, "{command}: command not found")?,
     }
-    stdout.flush()?;
-    stderr.flush()?;
 
     Ok(())
 }
