@@ -193,45 +193,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         _ => {
                             if pipeline_length == 1 {
                                 // there is only one command in the pipeline
-                                run_executable(
+                                if let Err(e) = run_executable(
                                     &command,
                                     arguments,
                                     Stdio::null(),
                                     parsed_command.stdout,
                                     parsed_command.stderr,
                                     None,
-                                )
-                                .expect("TODO: panic message");
+                                ) {
+                                    eprintln!("Error: {:?}", e);
+                                }
                             } else if index == 0 {
                                 // first command in the pipeline
-                                let mut child = Command::new(&command)
+                                if let Ok(mut child) = Command::new(&command)
                                     .args(arguments.map(|(_, argument)| argument))
                                     .stdin(Stdio::null())
                                     .stdout(Stdio::piped())
-                                    .spawn()?;
-                                previous_output = child.stdout.take();
-                                previous_child = Some(child);
+                                    .spawn()
+                                {
+                                    previous_output = child.stdout.take();
+                                    previous_child = Some(child);
+                                } else {
+                                    eprintln!("Error: Failed to spawn child process {}", command);
+                                }
                             } else if index < pipeline_length - 1 {
                                 // middle command in the pipeline
-                                let mut child = Command::new(&command)
+                                if let Ok(mut child) = Command::new(&command)
                                     .args(arguments.map(|(_, argument)| argument))
                                     .stdin(Stdio::from(previous_output.take().unwrap()))
                                     .stdout(Stdio::piped())
-                                    .spawn()?;
-                                previous_child.take().unwrap().wait()?;
-                                previous_output = child.stdout.take();
-                                previous_child = Some(child);
+                                    .spawn()
+                                {
+                                    if let Some(mut previous_child) = previous_child.take() {
+                                        if let Err(e) = previous_child.wait() {
+                                            eprintln!("Error: {:?}", e);
+                                        }
+                                    }
+                                    previous_output = child.stdout.take();
+                                    previous_child = Some(child);
+                                } else {
+                                    eprintln!("Error: Failed to spawn child process {}", command);
+                                }
                             } else {
                                 // last command in the pipeline
-                                run_executable(
+                                if let Err(e) = run_executable(
                                     &command,
                                     arguments,
                                     Stdio::from(previous_output.take().unwrap()),
                                     parsed_command.stdout,
                                     parsed_command.stderr,
                                     previous_child.take(),
-                                )
-                                .expect("TODO: panic message");
+                                ) {
+                                    eprintln!("Error: {:?}", e);
+                                }
                             }
                         }
                     }
@@ -301,8 +315,7 @@ fn command_type(
             }
             _ => match search_executable(&*argument) {
                 Some(full_path_to_executable) => {
-                    writeln!(stdout, "{argument} is {full_path_to_executable}")
-                        .unwrap_or_default()
+                    writeln!(stdout, "{argument} is {full_path_to_executable}").unwrap_or_default()
                 }
                 None => writeln!(stderr, "{argument}: not found").unwrap_or_default(),
             },
@@ -412,8 +425,9 @@ fn command_cd(
     };
     match set_current_dir(&directory) {
         Ok(_) => {}
-        Err(_) => writeln!(stderr, "cd: {directory}: No such file or directory")
-            .unwrap_or_default(),
+        Err(_) => {
+            writeln!(stderr, "cd: {directory}: No such file or directory").unwrap_or_default()
+        }
     }
     stdout.flush().unwrap_or_default();
     stderr.flush().unwrap_or_default();
