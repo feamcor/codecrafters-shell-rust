@@ -188,14 +188,28 @@ pub fn command_pwd(
 }
 
 pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
-    readline: &Editor<H, I>,
+    readline: &mut Editor<H, I>,
     arguments: Enumerate<IntoIter<String>>,
     _stdin: Box<dyn Read>,
     mut stdout: Box<dyn Write>,
     mut stderr: Box<dyn Write>,
 ) {
-    let history = readline.history();
     let args: Vec<String> = arguments.map(|(_, a)| a).collect();
+
+    if args.first().map(|s| s.as_str()) == Some("-r") {
+        if let Some(path) = args.get(1) {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                for line in content.lines() {
+                    if !line.is_empty() {
+                        let _ = readline.add_history_entry(line);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    let history = readline.history();
     let count = if let Some(arg) = args.first() {
         arg.parse::<usize>().unwrap_or(0)
     } else {
