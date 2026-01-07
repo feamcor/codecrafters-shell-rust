@@ -9,6 +9,7 @@ use std::env::set_current_dir;
 use std::env::var;
 use std::fs::OpenOptions;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::iter::Enumerate;
 use std::os::unix::fs::PermissionsExt;
@@ -87,7 +88,7 @@ impl ShellCompleter {
                             if entry_metadata.is_file()
                                 && (entry_metadata.permissions().mode() & 0o111 != 0)
                             {
-                                if let Some(file_name) = dir_entry.file_name().into_string().ok() {
+                                if let Ok(file_name) = dir_entry.file_name().into_string() {
                                     commands.push(file_name)
                                 }
                             }
@@ -162,91 +163,102 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue 'repl;
         }
 
-        let parsed_input = parse_input(input);
-        match parsed_input {
+        match parse_input(input) {
             Some(parsed_commands) => {
                 let pipeline_length = parsed_commands.len();
-                let mut previous_child = None;
-                let mut previous_output = None;
-                for (index, parsed_command) in parsed_commands.into_iter().enumerate() {
-                    let inherit_stdout = parsed_command.stdout.file_name.is_none();
-                    let inherit_stderr = parsed_command.stderr.file_name.is_none();
-                    let mut arguments = match parsed_command.tokens {
-                        Some(tokens) => tokens.into_iter().enumerate(),
+                let pipeline = parsed_commands.into_iter().peekable().enumerate();
+                let mut children: Vec<Child> = Vec::new();
+                let mut previous_output: Option<os_pipe::PipeReader> = None;
+
+                for (current_index, current_command) in pipeline {
+                    let arguments_vec: Vec<String> = current_command.tokens.clone().unwrap_or_default();
+                    let mut arguments = arguments_vec.into_iter().enumerate();
+
+                    let (stdin_builtin, stdin_external) = if let Some(output) = previous_output.take() {
+                        let output_for_external = output.try_clone().unwrap();
+                        (Box::new(output) as Box<dyn Read>, Stdio::from(output_for_external))
+                    } else {
+                        (Box::new(io::empty()) as Box<dyn Read>, Stdio::null())
+                    };
+
+                    let (stdout_builtin, stdout_external, new_previous_output) = if current_index < pipeline_length - 1 {
+                        let (reader, writer) = os_pipe::pipe().unwrap();
+                        let writer_for_external = writer.try_clone().unwrap();
+                        (Box::new(writer) as Box<dyn Write>, Stdio::from(writer_for_external), Some(reader))
+                    } else {
+                        let stdout = get_redirection(current_command.stdout.clone()).unwrap_or(Box::new(io::stdout()));
+                        (stdout, Stdio::inherit(), None)
+                    };
+                    previous_output = new_previous_output;
+
+                    let mut stderr_builtin = get_redirection(current_command.stderr.clone()).unwrap_or(Box::new(io::stderr()));
+
+                    let command = match arguments.next() {
+                        Some((_, argument)) => argument,
                         None => continue 'repl,
                     };
-                    let mut stdout = get_output_redirection(parsed_command.stdout)
-                        .unwrap_or(Box::new(io::stdout()));
-                    let mut stderr = get_output_redirection(parsed_command.stderr)
-                        .unwrap_or(Box::new(io::stderr()));
-                    let (_, command) = arguments.next().unwrap();
+
                     match command.as_str() {
                         COMMAND_CD => {
-                            command_cd(arguments, stdout, stderr);
+                            command_cd(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                         }
                         COMMAND_ECHO => {
-                            command_echo(arguments, stdout, stderr);
+                            command_echo(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                         }
                         COMMAND_EXIT => {
-                            command_exit(arguments, stdout, stderr);
+                            command_exit(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                         }
                         COMMAND_PWD => {
-                            command_pwd(arguments, stdout, stderr);
+                            command_pwd(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                         }
                         COMMAND_TYPE => {
-                            command_type(arguments, stdout, stderr);
+                            command_type(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                         }
                         _ => {
                             if pipeline_length == 1 {
                                 // there is only one command in the pipeline
+                                let mut stdout_builtin = stdout_builtin; // Re-bind to mut
                                 if let Err(e) = run_executable(
-                                    &command,
+                                    command.as_str(),
                                     arguments,
-                                    Stdio::null(),
-                                    &mut stdout,
-                                    &mut stderr,
-                                    inherit_stdout,
-                                    inherit_stderr,
+                                    stdin_external,
+                                    &mut stdout_builtin,
+                                    &mut stderr_builtin,
+                                    current_command.stdout.file_name.is_none(),
+                                    current_command.stderr.file_name.is_none(),
                                     None,
                                 ) {
-                                    writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                                    writeln!(stderr_builtin, "Error: {:?}", e).unwrap_or_default();
                                 }
-                            } else if index == 0 {
+                            } else if current_index == 0 {
                                 // first command in the pipeline
-                                if let Ok(mut spawned) = Command::new(&command)
+                                if let Ok(spawned) = Command::new(&command)
                                     .args(arguments.map(|(_, argument)| argument))
-                                    .stdin(Stdio::null())
-                                    .stdout(Stdio::piped())
+                                    .stdin(stdin_external)
+                                    .stdout(stdout_external)
                                     .spawn()
                                 {
-                                    previous_output = spawned.stdout.take();
-                                    previous_child = Some(spawned);
+                                    children.push(spawned);
                                 } else {
                                     writeln!(
-                                        stderr,
+                                        stderr_builtin,
                                         "Error: Failed to spawn child process {}",
                                         command
                                     )
                                     .unwrap_or_default();
                                 }
-                            } else if index < pipeline_length - 1 {
+                            } else if current_index < pipeline_length - 1 {
                                 // middle command in the pipeline
-                                if let Ok(mut spawned) = Command::new(&command)
+                                if let Ok(spawned) = Command::new(&command)
                                     .args(arguments.map(|(_, argument)| argument))
-                                    .stdin(Stdio::from(previous_output.take().unwrap()))
-                                    .stdout(Stdio::piped())
+                                    .stdin(stdin_external)
+                                    .stdout(stdout_external)
                                     .spawn()
                                 {
-                                    if let Some(mut previous_child) = previous_child.take() {
-                                        if let Err(e) = previous_child.wait() {
-                                            writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
-                                        }
-                                    }
-                                    previous_output = spawned.stdout.take();
-                                    previous_child = Some(spawned);
+                                    children.push(spawned);
                                 } else {
                                     writeln!(
-                                        stderr,
+                                        stderr_builtin,
                                         "Error: Failed to spawn child process {}",
                                         command
                                     )
@@ -254,21 +266,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             } else {
                                 // last command in the pipeline
+                                let mut stdout_builtin = stdout_builtin; // Re-bind to mut
                                 if let Err(e) = run_executable(
                                     &command,
                                     arguments,
-                                    Stdio::from(previous_output.take().unwrap()),
-                                    &mut stdout,
-                                    &mut stderr,
-                                    inherit_stdout,
-                                    inherit_stderr,
-                                    previous_child.take(),
+                                    stdin_external,
+                                    &mut stdout_builtin,
+                                    &mut stderr_builtin,
+                                    current_command.stdout.file_name.is_none(),
+                                    current_command.stderr.file_name.is_none(),
+                                    None, // We will wait for all children later
                                 ) {
-                                    writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                                    writeln!(stderr_builtin, "Error: {:?}", e).unwrap_or_default();
                                 }
                             }
                         }
                     }
+                }
+                for mut child in children {
+                    let _ = child.wait();
                 }
             }
             None => continue 'repl,
@@ -280,6 +296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn command_exit(
     arguments: Enumerate<IntoIter<String>>,
+    _stdin: Box<dyn Read>,
     _stdout: Box<dyn Write>,
     _stderr: Box<dyn Write>,
 ) {
@@ -292,6 +309,7 @@ fn command_exit(
 
 fn command_echo(
     arguments: Enumerate<IntoIter<String>>,
+    _stdin: Box<dyn Read>,
     mut stdout: Box<dyn Write>,
     _stderr: Box<dyn Write>,
 ) {
@@ -316,6 +334,7 @@ fn command_echo(
 
 fn command_type(
     arguments: Enumerate<IntoIter<String>>,
+    _stdin: Box<dyn Read>,
     mut stdout: Box<dyn Write>,
     mut stderr: Box<dyn Write>,
 ) {
@@ -324,7 +343,7 @@ fn command_type(
             COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE => {
                 writeln!(stdout, "{argument} is a shell builtin").unwrap_or_default()
             }
-            _ => match search_executable(&*argument) {
+            _ => match search_executable(&argument) {
                 Some(full_path_to_executable) => {
                     writeln!(stdout, "{argument} is {full_path_to_executable}").unwrap_or_default()
                 }
@@ -343,7 +362,7 @@ fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
 }
 
 fn search_executable(command: &str) -> Option<String> {
-    let path_var = var(ENVIRONMENT_VARIABLE_PATH).unwrap_or(String::new());
+    let path_var = var(ENVIRONMENT_VARIABLE_PATH).unwrap_or_default();
     for path_dir in path_var.split(ENVIRONMENT_VARIABLE_PATH_DELIMITER) {
         let full_path_to_executable = Path::new(path_dir).join(command);
         if full_path_to_executable.is_file()
@@ -356,66 +375,90 @@ fn search_executable(command: &str) -> Option<String> {
 }
 
 fn run_executable(
-    command: &str,
-    arguments: Enumerate<IntoIter<String>>,
+    current_command: &str,
+    command_arguments: Enumerate<IntoIter<String>>,
     stdin: Stdio,
     stdout: &mut Box<dyn Write>,
     stderr: &mut Box<dyn Write>,
     inherit_stdout: bool,
     inherit_stderr: bool,
-    child: Option<Child>,
+    previous_child: Option<Child>,
 ) -> Result<(), io::Error> {
-    let command_path = if Path::new(command).is_absolute() {
-        Some(command.to_string())
+    let command_path = if Path::new(current_command).is_absolute() {
+        Some(current_command.to_string())
     } else {
-        search_executable(command)
+        search_executable(current_command)
     };
-    match command_path {
-        Some(_) => {
-            if inherit_stdout && inherit_stderr {
-                let mut spawned = Command::new(command)
-                    .args(arguments.map(|(_, argument)| argument))
-                    .stdin(stdin)
-                    .stdout(Stdio::inherit())
-                    .stderr(Stdio::inherit())
-                    .spawn()?;
 
-                if let Some(mut previous_child) = child {
-                    let _status = previous_child.wait();
-                }
-
-                let _status = spawned.wait();
-            } else {
-                let output = Command::new(command)
-                    .args(arguments.map(|(_, argument)| argument))
-                    .stdin(stdin)
-                    .output();
-
-                if let Some(mut previous_child) = child {
-                    let _status = previous_child.wait();
-                }
-
-                match output {
-                    Ok(output) => {
-                        if !output.stdout.is_empty() {
-                            stdout.write_all(&output.stdout)?;
-                        }
-                        if !output.stderr.is_empty() {
-                            stderr.write_all(&output.stderr)?;
-                        }
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-        None => writeln!(stderr, "{command}: command not found")?,
+    if command_path.is_none() {
+        writeln!(stderr, "{current_command}: command not found")?;
+        return Ok(());
     }
 
-    Ok(())
+    if inherit_stdout && inherit_stderr {
+        let spawned = Command::new(current_command)
+            .args(command_arguments.map(|(_, argument)| argument))
+            .stdin(stdin)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn();
+
+        if let Some(mut previous_child) = previous_child {
+            if let Err(e) = previous_child.wait() {
+                writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                return Err(e);
+            }
+        }
+
+        match spawned {
+            Ok(mut spawned) => {
+                if let Err(e) = spawned.wait() {
+                    writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                    return Err(e);
+                }
+            }
+            Err(e) => {
+                writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    } else {
+        let output = Command::new(current_command)
+            .args(command_arguments.map(|(_, argument)| argument))
+            .stdin(stdin)
+            .output();
+
+        if let Some(mut previous_child) = previous_child {
+            if let Err(e) = previous_child.wait() {
+                writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                return Err(e);
+            }
+        }
+
+        match output {
+            Ok(output) => {
+                if !output.stdout.is_empty() {
+                    stdout.write_all(&output.stdout)?;
+                }
+                if !output.stderr.is_empty() {
+                    stderr.write_all(&output.stderr)?;
+                }
+            }
+            Err(e) => {
+                writeln!(stderr, "Error: {:?}", e).unwrap_or_default();
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn command_pwd(
     _arguments: Enumerate<IntoIter<String>>,
+    _stdin: Box<dyn Read>,
     mut stdout: Box<dyn Write>,
     mut stderr: Box<dyn Write>,
 ) {
@@ -427,10 +470,11 @@ fn command_pwd(
 
 fn command_cd(
     mut arguments: Enumerate<IntoIter<String>>,
+    _stdin: Box<dyn Read>,
     mut stdout: Box<dyn Write>,
     mut stderr: Box<dyn Write>,
 ) {
-    let home_directory = var(ENVIRONMENT_VARIABLE_HOME).unwrap_or(String::new());
+    let home_directory = var(ENVIRONMENT_VARIABLE_HOME).unwrap_or_default();
     let argument = arguments.next();
     let directory = match argument {
         Some((_index, path)) => match path.as_str() {
@@ -477,16 +521,14 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                     if current_token.is_empty() {
                         in_single_quotes = true;
                         in_double_quotes = false;
-                    } else {
-                        if let Some(next_character) = characters.peek() {
-                            if in_single_quotes && next_character.is_whitespace() {
-                                tokens.push(current_token);
-                                current_token = String::new();
-                                in_single_quotes = false;
-                                in_double_quotes = false;
-                            } else if in_double_quotes {
-                                current_token.push(character);
-                            }
+                    } else if let Some(next_character) = characters.peek() {
+                        if in_single_quotes && next_character.is_whitespace() {
+                            tokens.push(current_token);
+                            current_token = String::new();
+                            in_single_quotes = false;
+                            in_double_quotes = false;
+                        } else if in_double_quotes {
+                            current_token.push(character);
                         }
                     }
                 }
@@ -495,16 +537,14 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                     if current_token.is_empty() {
                         in_single_quotes = false;
                         in_double_quotes = true;
-                    } else {
-                        if let Some(next_character) = characters.peek() {
-                            if in_double_quotes && next_character.is_whitespace() {
-                                tokens.push(current_token);
-                                current_token = String::new();
-                                in_single_quotes = false;
-                                in_double_quotes = false;
-                            } else if in_single_quotes {
-                                current_token.push(character);
-                            }
+                    } else if let Some(next_character) = characters.peek() {
+                        if in_double_quotes && next_character.is_whitespace() {
+                            tokens.push(current_token);
+                            current_token = String::new();
+                            in_single_quotes = false;
+                            in_double_quotes = false;
+                        } else if in_single_quotes {
+                            current_token.push(character);
                         }
                     }
                 }
@@ -652,7 +692,7 @@ fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
     }
 }
 
-fn get_output_redirection(output: OutputRedirection) -> Option<Box<dyn Write>> {
+fn get_redirection(output: OutputRedirection) -> Option<Box<dyn Write>> {
     match output.file_name {
         Some(file_name) => {
             let file = OpenOptions::new()
