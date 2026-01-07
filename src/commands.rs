@@ -209,6 +209,20 @@ pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
         return;
     }
 
+    if args.first().map(|s| s.as_str()) == Some("-w") {
+        if let Some(path) = args.get(1) {
+            if let Ok(mut file) = std::fs::File::create(path) {
+                let history = readline.history();
+                for i in 0..history.len() {
+                    if let Ok(Some(entry)) = history.get(i, SearchDirection::Forward) {
+                        let _ = writeln!(file, "{}", entry.entry);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     let history = readline.history();
     let count = if let Some(arg) = args.first() {
         arg.parse::<usize>().unwrap_or(0)
