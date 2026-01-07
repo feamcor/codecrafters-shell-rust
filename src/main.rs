@@ -36,6 +36,7 @@ const COMMAND_ECHO_FLAG_EXPAND_ESCAPE: &str = "-e";
 const COMMAND_EXIT: &str = "exit";
 const COMMAND_PWD: &str = "pwd";
 const COMMAND_TYPE: &str = "type";
+const COMMAND_HISTORY: &str = "history";
 const ENVIRONMENT_VARIABLE_HOME: &str = "HOME";
 const ENVIRONMENT_VARIABLE_PATH: &str = "PATH";
 const ENVIRONMENT_VARIABLE_PATH_DELIMITER: char = ':';
@@ -78,6 +79,7 @@ impl ShellCompleter {
             COMMAND_EXIT.to_string(),
             COMMAND_PWD.to_string(),
             COMMAND_TYPE.to_string(),
+            COMMAND_HISTORY.to_string(),
         ];
 
         if let Ok(path_var) = var(ENVIRONMENT_VARIABLE_PATH) {
@@ -149,7 +151,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     'repl: loop {
         let input = match readline.readline(SHELL_PROMPT) {
-            Ok(line) => line,
+            Ok(line) => {
+                readline.add_history_entry(line.as_str())?;
+                line
+            },
             Err(ReadlineError::Interrupted) => break 'repl,
             Err(ReadlineError::Eof) => break 'repl,
             Err(e) => {
@@ -210,6 +215,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         COMMAND_PWD => {
                             command_pwd(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
+                        }
+                        COMMAND_HISTORY => {
+                            command_history(&readline, arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                         }
                         COMMAND_TYPE => {
                             command_type(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
@@ -340,7 +348,7 @@ fn command_type(
 ) {
     for (_index, argument) in arguments.take(1) {
         match argument.as_str() {
-            COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE => {
+            COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE | COMMAND_HISTORY => {
                 writeln!(stdout, "{argument} is a shell builtin").unwrap_or_default()
             }
             _ => match search_executable(&argument) {
@@ -464,6 +472,20 @@ fn command_pwd(
 ) {
     let current_directory = current_dir().unwrap();
     writeln!(stdout, "{}", current_directory.to_string_lossy()).unwrap_or_default();
+    stdout.flush().unwrap_or_default();
+    stderr.flush().unwrap_or_default();
+}
+
+fn command_history(
+    readline: &Editor<ShellHelper, rustyline::history::FileHistory>,
+    _arguments: Enumerate<IntoIter<String>>,
+    _stdin: Box<dyn Read>,
+    mut stdout: Box<dyn Write>,
+    mut stderr: Box<dyn Write>,
+) {
+    for (index, entry) in readline.history().iter().enumerate() {
+        writeln!(stdout, "{:>5}  {}", index + 1, entry).unwrap_or_default();
+    }
     stdout.flush().unwrap_or_default();
     stderr.flush().unwrap_or_default();
 }
