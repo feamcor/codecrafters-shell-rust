@@ -8,11 +8,11 @@ use std::io::{Read, Write};
 use std::iter::Enumerate;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::vec::IntoIter;
 
-pub fn is_executable(full_path_to_executable: &PathBuf) -> io::Result<bool> {
+pub fn is_executable(full_path_to_executable: &Path) -> io::Result<bool> {
     Ok(full_path_to_executable.is_file()
         && (full_path_to_executable.metadata()?.permissions().mode() & 0o111 != 0))
 }
@@ -101,19 +101,6 @@ pub fn run_executable(
     }
 
     Ok(child)
-}
-
-pub fn command_exit(
-    mut arguments: Enumerate<IntoIter<String>>,
-    _stdin: Box<dyn Read>,
-    _stdout: Box<dyn Write>,
-    _stderr: Box<dyn Write>,
-) {
-    let exit_code = match arguments.next() {
-        Some((_, code)) => code.parse::<i32>().unwrap_or(0),
-        None => 0,
-    };
-    std::process::exit(exit_code);
 }
 
 pub fn command_echo(
