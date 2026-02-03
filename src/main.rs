@@ -8,12 +8,26 @@ use crate::shell_helper::*;
 use rustyline::config::{BellStyle, CompletionType, Config};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use rustyline::history::History;
+use rustyline::history::{History, SearchDirection};
 use std::io;
 use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+
+fn save_history_plain<H: rustyline::Helper, I: rustyline::history::History>(
+    readline: &Editor<H, I>,
+    path: &str,
+) {
+    if let Ok(mut file) = std::fs::File::create(path) {
+        let history = readline.history();
+        for i in 0..history.len() {
+            if let Ok(Some(entry)) = history.get(i, SearchDirection::Forward) {
+                let _ = writeln!(file, "{}", entry.entry);
+            }
+        }
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let helper = ShellHelper {
@@ -124,7 +138,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         command_echo(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
                     }
                     COMMAND_EXIT => {
-                        command_exit(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
+                        // Save history before exiting so HISTFILE is updated
+                        let exit_code = match arguments.next() {
+                            Some((_, code)) => code.parse::<i32>().unwrap_or(0),
+                            None => 0,
+                        };
+                        if let Some(ref path) = histfile_path {
+                            save_history_plain(&readline, path);
+                        }
+                        std::process::exit(exit_code);
                     }
                     COMMAND_PWD => {
                         command_pwd(arguments, stdin_builtin, stdout_builtin, stderr_builtin);
@@ -192,7 +214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(ref path) = histfile_path {
-        let _ = readline.save_history(path);
+        save_history_plain(&readline, path);
     }
 
     Ok(())
