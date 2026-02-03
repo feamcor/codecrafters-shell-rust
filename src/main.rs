@@ -8,6 +8,7 @@ use crate::shell_helper::*;
 use rustyline::config::{BellStyle, CompletionType, Config};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use rustyline::history::History;
 use std::io;
 use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
@@ -27,7 +28,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut readline = Editor::with_config(config)?;
     readline.set_helper(Some(helper));
 
-    let mut last_appended_index: usize = 0;
+    let histfile_path: Option<String> = std::env::var("HISTFILE").ok();
+    if let Some(ref path) = histfile_path {
+        let _ = readline.load_history(path);
+    }
+
+    let mut last_appended_index: usize = readline.history().len();
 
     'repl: loop {
         let input = match readline.readline(SHELL_PROMPT) {
@@ -183,6 +189,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = child.wait();
             }
         }
+    }
+
+    if let Some(ref path) = histfile_path {
+        let _ = readline.save_history(path);
     }
 
     Ok(())
