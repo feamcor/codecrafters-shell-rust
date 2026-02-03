@@ -189,6 +189,7 @@ pub fn command_pwd(
 
 pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
     readline: &mut Editor<H, I>,
+    last_appended_index: &mut usize,
     arguments: Enumerate<IntoIter<String>>,
     _stdin: Box<dyn Read>,
     mut stdout: Box<dyn Write>,
@@ -204,6 +205,22 @@ pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
                         let _ = readline.add_history_entry(line);
                     }
                 }
+            }
+        }
+        return;
+    }
+
+    if args.first().map(|s| s.as_str()) == Some("-a") {
+        if let Some(path) = args.get(1) {
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+                let history = readline.history();
+                let len = history.len();
+                for i in *last_appended_index..len {
+                    if let Ok(Some(entry)) = history.get(i, SearchDirection::Forward) {
+                        let _ = writeln!(file, "{}", entry.entry);
+                    }
+                }
+                *last_appended_index = len;
             }
         }
         return;

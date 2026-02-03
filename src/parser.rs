@@ -93,34 +93,22 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
         while let Some(character) = characters.next() {
             match character {
                 CHAR_SINGLE_QUOTE if !escape_next_char => {
-                    if current_token.is_empty() {
-                        in_single_quotes = true;
-                        in_double_quotes = false;
-                    } else if let Some(next_character) = characters.peek() {
-                        if in_single_quotes && next_character.is_whitespace() {
-                            tokens.push(current_token);
-                            current_token = String::new();
-                            in_single_quotes = false;
-                            in_double_quotes = false;
-                        } else if in_double_quotes {
-                            current_token.push(character);
-                        }
+                    if in_double_quotes {
+                        // Inside double quotes, a single quote is literal
+                        current_token.push(character);
+                    } else {
+                        // Toggle single-quote state
+                        in_single_quotes = !in_single_quotes;
                     }
                 }
 
                 CHAR_DOUBLE_QUOTE if !escape_next_char => {
-                    if current_token.is_empty() {
-                        in_single_quotes = false;
-                        in_double_quotes = true;
-                    } else if let Some(next_character) = characters.peek() {
-                        if in_double_quotes && next_character.is_whitespace() {
-                            tokens.push(current_token);
-                            current_token = String::new();
-                            in_single_quotes = false;
-                            in_double_quotes = false;
-                        } else if in_single_quotes {
-                            current_token.push(character);
-                        }
+                    if in_single_quotes {
+                        // Inside single quotes, a double quote is literal
+                        current_token.push(character);
+                    } else {
+                        // Toggle double-quote state
+                        in_double_quotes = !in_double_quotes;
                     }
                 }
 

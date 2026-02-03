@@ -25,7 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let mut readline = Editor::with_config(config)?;
-    let _ = readline.set_helper(Some(helper));
+    readline.set_helper(Some(helper));
+
+    let mut last_appended_index: usize = 0;
 
     'repl: loop {
         let input = match readline.readline(SHELL_PROMPT) {
@@ -127,6 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     COMMAND_HISTORY => {
                         command_history(
                             &mut readline,
+                            &mut last_appended_index,
                             arguments,
                             stdin_builtin,
                             stdout_builtin,
