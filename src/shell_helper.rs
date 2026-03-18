@@ -34,9 +34,7 @@ impl ShellCompleter {
                 if let Ok(dir_entries) = std::fs::read_dir(path_dir) {
                     for dir_entry in dir_entries.flatten() {
                         if let Ok(entry_metadata) = dir_entry.metadata() {
-                            if entry_metadata.is_file()
-                                && (entry_metadata.permissions().mode() & 0o111 != 0)
-                            {
+                            if entry_metadata.is_file() && (entry_metadata.permissions().mode() & 0o111 != 0) {
                                 if let Ok(file_name) = dir_entry.file_name().into_string() {
                                     commands.push(file_name)
                                 }
@@ -52,6 +50,26 @@ impl ShellCompleter {
 
         Self { commands }
     }
+
+    fn find_matching_files(prefix: &str) -> Vec<String> {
+        if prefix.is_empty() {
+            return Vec::new();
+        }
+
+        std::fs::read_dir(".")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                if name.starts_with(prefix) && e.path().is_file() {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 impl Completer for ShellCompleter {
@@ -63,12 +81,26 @@ impl Completer for ShellCompleter {
         pos: usize,
         _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Self::Candidate>), ReadlineError> {
-        if pos > 0 && line.chars().take(pos).any(|c| c.is_whitespace()) {
+        if pos > 0 && line[..pos].contains(' ') {
+            let prefix_start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
+            let prefix = &line[prefix_start..pos];
+
+            let matches = Self::find_matching_files(prefix);
+
+            if matches.len() == 1 {
+                return Ok((
+                    prefix_start,
+                    vec![Pair {
+                        display: matches[0].clone(),
+                        replacement: format!("{} ", matches[0]),
+                    }],
+                ));
+            }
+
             return Ok((0, Vec::new()));
         }
 
-        let (start, word) =
-            rustyline::completion::extract_word(line, pos, None, |c| c.is_whitespace());
+        let (start, word) = rustyline::completion::extract_word(line, pos, None, |c| c.is_whitespace());
 
         let mut candidates = Vec::new();
         for command in &self.commands {
