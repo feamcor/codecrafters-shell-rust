@@ -12,6 +12,37 @@ static LAST_PREFIX: Mutex<Option<String>> = Mutex::new(None);
 
 const SHELL_PROMPT: &str = "$ ";
 
+fn compute_lcp(prefix: &str, matches: &[(String, bool)]) -> String {
+    if matches.is_empty() {
+        return prefix.to_string();
+    }
+
+    let matching: Vec<_> = matches.iter().filter(|(name, _)| name.starts_with(prefix)).collect();
+
+    if matching.is_empty() {
+        return prefix.to_string();
+    }
+
+    if matching.len() == 1 {
+        return matching[0].0.clone();
+    }
+
+    let mut lcp_chars: Vec<char> = Vec::new();
+    for i in 0.. {
+        let c = match matching[0].0.chars().nth(i) {
+            Some(ch) => ch,
+            None => break,
+        };
+        if matching.iter().all(|(name, _)| name.chars().nth(i) == Some(c)) {
+            lcp_chars.push(c);
+        } else {
+            break;
+        }
+    }
+
+    lcp_chars.into_iter().collect()
+}
+
 #[derive(Helper, Completer, Hinter, Validator)]
 pub struct ShellHelper {
     #[rustyline(Completer)]
@@ -118,6 +149,24 @@ impl Completer for ShellCompleter {
             }
 
             if matches.len() > 1 {
+                let lcp = compute_lcp(prefix, &matches);
+
+                if lcp.len() > prefix.len() {
+                    let dir_prefix = if let Some(slash_pos) = prefix.rfind('/') {
+                        &prefix[..=slash_pos]
+                    } else {
+                        ""
+                    };
+                    let full_path = format!("{}{}", dir_prefix, lcp);
+                    return Ok((
+                        prefix_start,
+                        vec![Pair {
+                            display: full_path.clone(),
+                            replacement: full_path,
+                        }],
+                    ));
+                }
+
                 let mut last_prefix = LAST_PREFIX.lock().unwrap();
                 let first_tab = match &*last_prefix {
                     Some(p) if p == prefix => false,
