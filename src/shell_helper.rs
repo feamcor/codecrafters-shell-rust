@@ -51,11 +51,7 @@ impl ShellCompleter {
         Self { commands }
     }
 
-    fn find_matching_files(prefix: &str) -> Vec<String> {
-        if prefix.is_empty() {
-            return Vec::new();
-        }
-
+    fn find_matching_entries(prefix: &str) -> Vec<(String, bool)> {
         let (dir_path, file_prefix) = if let Some(last_slash) = prefix.rfind('/') {
             let dir = &prefix[..last_slash + 1];
             let file = &prefix[last_slash + 1..];
@@ -72,8 +68,8 @@ impl ShellCompleter {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
-                if name.starts_with(file_prefix) && e.path().is_file() {
-                    Some(name)
+                if name.starts_with(file_prefix) {
+                    Some((name, e.path().is_dir()))
                 } else {
                     None
                 }
@@ -95,20 +91,22 @@ impl Completer for ShellCompleter {
             let prefix_start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
             let prefix = &line[prefix_start..pos];
 
-            let matches = Self::find_matching_files(prefix);
+            let matches = Self::find_matching_entries(prefix);
 
             if matches.len() == 1 {
+                let (filename, is_dir) = &matches[0];
                 let dir_prefix = if let Some(slash_pos) = prefix.rfind('/') {
                     &prefix[..=slash_pos]
                 } else {
                     ""
                 };
-                let full_path = format!("{}{}", dir_prefix, matches[0]);
+                let full_path = format!("{}{}", dir_prefix, filename);
+                let trailing = if *is_dir { "/" } else { " " };
                 return Ok((
                     prefix_start,
                     vec![Pair {
                         display: full_path.clone(),
-                        replacement: format!("{} ", full_path),
+                        replacement: format!("{}{}", full_path, trailing),
                     }],
                 ));
             }
