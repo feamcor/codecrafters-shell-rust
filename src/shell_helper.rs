@@ -4,7 +4,13 @@ use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::{Completer, Context, Helper, Hinter, Validator};
 use std::env::var;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Mutex;
+
+static LAST_PREFIX: Mutex<Option<String>> = Mutex::new(None);
+
+const SHELL_PROMPT: &str = "$ ";
 
 #[derive(Helper, Completer, Hinter, Validator)]
 pub struct ShellHelper {
@@ -109,6 +115,40 @@ impl Completer for ShellCompleter {
                         replacement: format!("{}{}", full_path, trailing),
                     }],
                 ));
+            }
+
+            if matches.len() > 1 {
+                let mut last_prefix = LAST_PREFIX.lock().unwrap();
+                let first_tab = match &*last_prefix {
+                    Some(p) if p == prefix => false,
+                    _ => {
+                        *last_prefix = Some(prefix.to_string());
+                        true
+                    }
+                };
+
+                if first_tab {
+                    eprint!("\x07");
+                    return Ok((0, Vec::new()));
+                }
+
+                let mut matches_sorted: Vec<_> = matches
+                    .iter()
+                    .map(|(filename, is_dir)| {
+                        if *is_dir {
+                            format!("{}/", filename)
+                        } else {
+                            filename.clone()
+                        }
+                    })
+                    .collect();
+
+                matches_sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+
+                print!("\n{}\n{}{}", matches_sorted.join("  "), SHELL_PROMPT, line);
+                std::io::stdout().flush().ok();
+
+                return Ok((0, Vec::new()));
             }
 
             return Ok((0, Vec::new()));
