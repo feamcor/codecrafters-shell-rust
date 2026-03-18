@@ -56,13 +56,23 @@ impl ShellCompleter {
             return Vec::new();
         }
 
-        std::fs::read_dir(".")
+        let (dir_path, file_prefix) = if let Some(last_slash) = prefix.rfind('/') {
+            let dir = &prefix[..last_slash + 1];
+            let file = &prefix[last_slash + 1..];
+            (Some(dir), file)
+        } else {
+            (None, prefix)
+        };
+
+        let search_dir = dir_path.unwrap_or(".");
+
+        std::fs::read_dir(search_dir)
             .into_iter()
             .flatten()
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
-                if name.starts_with(prefix) && e.path().is_file() {
+                if name.starts_with(file_prefix) && e.path().is_file() {
                     Some(name)
                 } else {
                     None
@@ -88,11 +98,17 @@ impl Completer for ShellCompleter {
             let matches = Self::find_matching_files(prefix);
 
             if matches.len() == 1 {
+                let dir_prefix = if let Some(slash_pos) = prefix.rfind('/') {
+                    &prefix[..=slash_pos]
+                } else {
+                    ""
+                };
+                let full_path = format!("{}{}", dir_prefix, matches[0]);
                 return Ok((
                     prefix_start,
                     vec![Pair {
-                        display: matches[0].clone(),
-                        replacement: format!("{} ", matches[0]),
+                        display: full_path.clone(),
+                        replacement: format!("{} ", full_path),
                     }],
                 ));
             }
