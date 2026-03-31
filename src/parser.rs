@@ -38,6 +38,7 @@ pub struct ParsedCommand {
     pub tokens: Option<Vec<String>>,
     pub stdout: OutputRedirection,
     pub stderr: OutputRedirection,
+    pub background: bool,
 }
 
 pub fn expand_escape_sequences(string: &str) -> String {
@@ -141,6 +142,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                         },
                         stdout,
                         stderr,
+                        background: false,
                     });
                     continue 'pipeline;
                 }
@@ -242,6 +244,11 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
             }
         }
 
+        let background = tokens.last().map(|t| t == "&").unwrap_or(false);
+        if background {
+            tokens.pop();
+        }
+
         pipeline.push(ParsedCommand {
             tokens: if tokens.is_empty() {
                 None
@@ -250,6 +257,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
             },
             stdout,
             stderr,
+            background,
         });
 
         break;

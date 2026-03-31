@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut last_appended_index: usize = readline.history().len();
+    let mut next_job_id: usize = 1;
 
     'repl: loop {
         let input = match readline.readline(SHELL_PROMPT) {
@@ -179,7 +180,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 None,
                             ) {
                                 Ok(mut child) => {
-                                    let _ = child.wait();
+                                    if current_command.background {
+                                        let job_id = next_job_id;
+                                        next_job_id += 1;
+                                        println!("[{}] {}", job_id, child.id());
+                                    } else {
+                                        let _ = child.wait();
+                                    }
                                 }
                                 Err(e) => {
                                     writeln!(stderr_builtin, "Error: {:?}", e).unwrap_or_default();
