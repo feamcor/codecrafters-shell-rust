@@ -17,6 +17,7 @@ pub const COMMAND_EXIT: &str = "exit";
 pub const COMMAND_PWD: &str = "pwd";
 pub const COMMAND_TYPE: &str = "type";
 pub const COMMAND_HISTORY: &str = "history";
+pub const COMMAND_JOBS: &str = "jobs";
 pub const ENVIRONMENT_VARIABLE_HOME: &str = "HOME";
 pub const ENVIRONMENT_VARIABLE_PATH: &str = "PATH";
 pub const ENVIRONMENT_VARIABLE_PATH_DELIMITER: char = ':';

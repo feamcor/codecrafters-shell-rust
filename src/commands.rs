@@ -143,7 +143,7 @@ pub fn command_type(
     if let Some((_, command)) = arguments.next() {
         match command.as_str() {
             COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE
-            | COMMAND_HISTORY => {
+            | COMMAND_HISTORY | COMMAND_JOBS => {
                 writeln!(stdout, "{command} is a shell builtin").unwrap_or_default();
             }
             _ => {

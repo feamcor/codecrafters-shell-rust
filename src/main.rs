@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     match command.as_str() {
                         COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE
-                        | COMMAND_HISTORY => "".to_string(), // It's a builtin
+                        | COMMAND_HISTORY | COMMAND_JOBS => "".to_string(), // It's a builtin
                         _ => {
                             writeln!(stderr_builtin, "{command}: command not found")
                                 .unwrap_or_default();
@@ -160,6 +160,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             stdout_builtin,
                             stderr_builtin,
                         );
+                    }
+                    COMMAND_JOBS => {
+                        // Empty implementation: no background jobs tracked yet
                     }
                     _ => {
                         if pipeline_length == 1 {

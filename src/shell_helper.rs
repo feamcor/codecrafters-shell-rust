@@ -64,6 +64,7 @@ impl ShellCompleter {
             COMMAND_PWD.to_string(),
             COMMAND_TYPE.to_string(),
             COMMAND_HISTORY.to_string(),
+            COMMAND_JOBS.to_string(),
         ];
 
         if let Ok(path_var) = var(ENVIRONMENT_VARIABLE_PATH) {
