@@ -74,7 +74,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut last_appended_index: usize = readline.history().len();
-    let mut next_job_id: usize = 1;
     let mut background_jobs: Vec<BackgroundJob> = Vec::new();
 
     'repl: loop {
@@ -244,8 +243,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ) {
                                 Ok(child) => {
                                     if current_command.background {
-                                        let job_id = next_job_id;
-                                        next_job_id += 1;
+                                        let used: std::collections::HashSet<usize> = background_jobs.iter().map(|j| j.id).collect();
+                                        let job_id = (1..).find(|n| !used.contains(n)).unwrap();
                                         let pid = child.id();
                                         let cmd_str = current_command
                                             .tokens
