@@ -1,4 +1,7 @@
-use crate::parser::*;
+use crate::parser::{
+    COMMAND_CD, COMMAND_ECHO, COMMAND_EXIT, COMMAND_HISTORY, COMMAND_JOBS, COMMAND_PWD,
+    COMMAND_TYPE, ENVIRONMENT_VARIABLE_PATH, ENVIRONMENT_VARIABLE_PATH_DELIMITER, SHELL_PROMPT,
+};
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -10,14 +13,15 @@ use std::sync::Mutex;
 
 static LAST_PREFIX: Mutex<Option<String>> = Mutex::new(None);
 
-const SHELL_PROMPT: &str = "$ ";
-
 fn compute_lcp(prefix: &str, matches: &[(String, bool)]) -> String {
     if matches.is_empty() {
         return prefix.to_string();
     }
 
-    let matching: Vec<_> = matches.iter().filter(|(name, _)| name.starts_with(prefix)).collect();
+    let matching: Vec<_> = matches
+        .iter()
+        .filter(|(name, _)| name.starts_with(prefix))
+        .collect();
 
     if matching.is_empty() {
         return prefix.to_string();
@@ -29,11 +33,13 @@ fn compute_lcp(prefix: &str, matches: &[(String, bool)]) -> String {
 
     let mut lcp_chars: Vec<char> = Vec::new();
     for i in 0.. {
-        let c = match matching[0].0.chars().nth(i) {
-            Some(ch) => ch,
-            None => break,
+        let Some(c) = matching[0].0.chars().nth(i) else {
+            break;
         };
-        if matching.iter().all(|(name, _)| name.chars().nth(i) == Some(c)) {
+        if matching
+            .iter()
+            .all(|(name, _)| name.chars().nth(i) == Some(c))
+        {
             lcp_chars.push(c);
         } else {
             break;
@@ -72,9 +78,11 @@ impl ShellCompleter {
                 if let Ok(dir_entries) = std::fs::read_dir(path_dir) {
                     for dir_entry in dir_entries.flatten() {
                         if let Ok(entry_metadata) = dir_entry.metadata() {
-                            if entry_metadata.is_file() && (entry_metadata.permissions().mode() & 0o111 != 0) {
+                            if entry_metadata.is_file()
+                                && (entry_metadata.permissions().mode() & 0o111 != 0)
+                            {
                                 if let Ok(file_name) = dir_entry.file_name().into_string() {
-                                    commands.push(file_name)
+                                    commands.push(file_name);
                                 }
                             }
                         }
@@ -91,7 +99,7 @@ impl ShellCompleter {
 
     fn find_matching_entries(prefix: &str) -> Vec<(String, bool)> {
         let (dir_path, file_prefix) = if let Some(last_slash) = prefix.rfind('/') {
-            let dir = &prefix[..last_slash + 1];
+            let dir = &prefix[..=last_slash];
             let file = &prefix[last_slash + 1..];
             (Some(dir), file)
         } else {
@@ -126,7 +134,7 @@ impl Completer for ShellCompleter {
         _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Self::Candidate>), ReadlineError> {
         if pos > 0 && line[..pos].contains(' ') {
-            let prefix_start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
+            let prefix_start = line[..pos].rfind(' ').map_or(0, |i| i + 1);
             let prefix = &line[prefix_start..pos];
 
             let matches = Self::find_matching_entries(prefix);
@@ -138,13 +146,13 @@ impl Completer for ShellCompleter {
                 } else {
                     ""
                 };
-                let full_path = format!("{}{}", dir_prefix, filename);
+                let full_path = format!("{dir_prefix}{filename}");
                 let trailing = if *is_dir { "/" } else { " " };
                 return Ok((
                     prefix_start,
                     vec![Pair {
                         display: full_path.clone(),
-                        replacement: format!("{}{}", full_path, trailing),
+                        replacement: format!("{full_path}{trailing}"),
                     }],
                 ));
             }
@@ -158,7 +166,7 @@ impl Completer for ShellCompleter {
                     } else {
                         ""
                     };
-                    let full_path = format!("{}{}", dir_prefix, lcp);
+                    let full_path = format!("{dir_prefix}{lcp}");
                     return Ok((
                         prefix_start,
                         vec![Pair {
@@ -186,14 +194,14 @@ impl Completer for ShellCompleter {
                     .iter()
                     .map(|(filename, is_dir)| {
                         if *is_dir {
-                            format!("{}/", filename)
+                            format!("{filename}/")
                         } else {
                             filename.clone()
                         }
                     })
                     .collect();
 
-                matches_sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+                matches_sorted.sort_by_key(|a| a.to_lowercase());
 
                 print!("\n{}\n{}{}", matches_sorted.join("  "), SHELL_PROMPT, line);
                 std::io::stdout().flush().ok();
@@ -204,7 +212,8 @@ impl Completer for ShellCompleter {
             return Ok((0, Vec::new()));
         }
 
-        let (start, word) = rustyline::completion::extract_word(line, pos, None, |c| c.is_whitespace());
+        let (start, word) =
+            rustyline::completion::extract_word(line, pos, None, char::is_whitespace);
 
         let mut candidates = Vec::new();
         for command in &self.commands {

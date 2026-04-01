@@ -70,6 +70,7 @@ pub fn expand_escape_sequences(string: &str) -> String {
     result
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
     let mut pipeline = Vec::new();
     let mut characters = input.trim().chars().peekable();
@@ -244,7 +245,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
             }
         }
 
-        let background = tokens.last().map(|t| t == "&").unwrap_or(false);
+        let background = tokens.last().is_some_and(|t| t == "&");
         if background {
             tokens.pop();
         }

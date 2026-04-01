@@ -1,4 +1,10 @@
-use crate::parser::*;
+use crate::jobs::JobManager;
+use crate::parser::{
+    expand_escape_sequences, OutputRedirection, COMMAND_CD, COMMAND_ECHO,
+    COMMAND_ECHO_FLAG_EXPAND_ESCAPE, COMMAND_EXIT, COMMAND_HISTORY, COMMAND_JOBS, COMMAND_PWD,
+    COMMAND_TYPE, ENVIRONMENT_VARIABLE_HOME, ENVIRONMENT_VARIABLE_PATH,
+    ENVIRONMENT_VARIABLE_PATH_DELIMITER, HOME_DIRECTORY,
+};
 use rustyline::history::SearchDirection;
 use rustyline::Editor;
 use std::env::{current_dir, set_current_dir, var};
@@ -11,6 +17,69 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::vec::IntoIter;
+
+#[derive(Debug, PartialEq)]
+pub enum BuiltinAction {
+    Continue,
+    Exit(i32),
+}
+
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_builtin<H: rustyline::Helper, I: rustyline::history::History>(
+    command: &str,
+    arguments: Enumerate<IntoIter<String>>,
+    stdin: Box<dyn Read>,
+    stdout: Box<dyn Write>,
+    stderr: Box<dyn Write>,
+    editor: &mut Editor<H, I>,
+    last_appended_index: &mut usize,
+    job_mgr: &mut JobManager,
+) -> Option<BuiltinAction> {
+    match command {
+        COMMAND_CD => {
+            command_cd(arguments, stdin, stdout, stderr);
+            Some(BuiltinAction::Continue)
+        }
+        COMMAND_ECHO => {
+            command_echo(arguments, stdin, stdout, stderr);
+            Some(BuiltinAction::Continue)
+        }
+        COMMAND_EXIT => {
+            let mut arguments = arguments;
+            let exit_code = match arguments.next() {
+                Some((_, code)) => code.parse::<i32>().unwrap_or(0),
+                None => 0,
+            };
+            Some(BuiltinAction::Exit(exit_code))
+        }
+        COMMAND_PWD => {
+            command_pwd(arguments, stdin, stdout, stderr);
+            Some(BuiltinAction::Continue)
+        }
+        COMMAND_TYPE => {
+            command_type(arguments, stdin, stdout, stderr);
+            Some(BuiltinAction::Continue)
+        }
+        COMMAND_HISTORY => {
+            command_history(
+                editor,
+                last_appended_index,
+                arguments,
+                stdin,
+                stdout,
+                stderr,
+            );
+            Some(BuiltinAction::Continue)
+        }
+        COMMAND_JOBS => {
+            let mut stdout = stdout;
+            job_mgr.list_jobs(&mut stdout);
+            Some(BuiltinAction::Continue)
+        }
+        _ => None,
+    }
+}
 
 pub fn is_executable(full_path_to_executable: &Path) -> io::Result<bool> {
     Ok(full_path_to_executable.is_file()
@@ -51,6 +120,7 @@ pub fn get_redirection(output: OutputRedirection) -> Option<Box<dyn Write>> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_executable(
     executable_path: &str,
     original_command: &str,
@@ -184,7 +254,7 @@ pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
 ) {
     let args: Vec<String> = arguments.map(|(_, a)| a).collect();
 
-    if args.first().map(|s| s.as_str()) == Some("-r") {
+    if args.first().map(std::string::String::as_str) == Some("-r") {
         if let Some(path) = args.get(1) {
             if let Ok(content) = std::fs::read_to_string(path) {
                 for line in content.lines() {
@@ -197,7 +267,7 @@ pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
         return;
     }
 
-    if args.first().map(|s| s.as_str()) == Some("-a") {
+    if args.first().map(std::string::String::as_str) == Some("-a") {
         if let Some(path) = args.get(1) {
             if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
                 let history = readline.history();
@@ -213,7 +283,7 @@ pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
         return;
     }
 
-    if args.first().map(|s| s.as_str()) == Some("-w") {
+    if args.first().map(std::string::String::as_str) == Some("-w") {
         if let Some(path) = args.get(1) {
             if let Ok(mut file) = std::fs::File::create(path) {
                 let history = readline.history();
@@ -268,9 +338,9 @@ pub fn command_cd(
     };
 
     match set_current_dir(&directory) {
-        Ok(_) => {}
+        Ok(()) => {}
         Err(_) => {
-            writeln!(stderr, "cd: {directory}: No such file or directory").unwrap_or_default()
+            writeln!(stderr, "cd: {directory}: No such file or directory").unwrap_or_default();
         }
     }
     stdout.flush().unwrap_or_default();
