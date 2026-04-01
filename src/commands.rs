@@ -1,21 +1,35 @@
 use crate::jobs::JobManager;
-use crate::parser::{
-    expand_escape_sequences, OutputRedirection, COMMAND_CD, COMMAND_ECHO,
-    COMMAND_ECHO_FLAG_EXPAND_ESCAPE, COMMAND_EXIT, COMMAND_HISTORY, COMMAND_JOBS, COMMAND_PWD,
-    COMMAND_TYPE, ENVIRONMENT_VARIABLE_HOME, ENVIRONMENT_VARIABLE_PATH,
-    ENVIRONMENT_VARIABLE_PATH_DELIMITER, HOME_DIRECTORY,
-};
+use crate::parser::expand_escape_sequences;
+use crate::parser::OutputRedirection;
+use crate::parser::COMMAND_CD;
+use crate::parser::COMMAND_ECHO;
+use crate::parser::COMMAND_ECHO_FLAG_EXPAND_ESCAPE;
+use crate::parser::COMMAND_EXIT;
+use crate::parser::COMMAND_HISTORY;
+use crate::parser::COMMAND_JOBS;
+use crate::parser::COMMAND_PWD;
+use crate::parser::COMMAND_TYPE;
+use crate::parser::ENVIRONMENT_VARIABLE_HOME;
+use crate::parser::ENVIRONMENT_VARIABLE_PATH;
+use crate::parser::ENVIRONMENT_VARIABLE_PATH_DELIMITER;
+use crate::parser::HOME_DIRECTORY;
 use rustyline::history::SearchDirection;
 use rustyline::Editor;
-use std::env::{current_dir, set_current_dir, var};
+use std::env::current_dir;
+use std::env::set_current_dir;
+use std::env::var;
 use std::fs::OpenOptions;
 use std::io;
-use std::io::{Read, Write};
+use std::io::Read;
+use std::io::Write;
 use std::iter::Enumerate;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Child;
+use std::process::Command;
+use std::process::Stdio;
 use std::vec::IntoIter;
 
 #[derive(Debug, PartialEq)]
@@ -62,14 +76,7 @@ pub fn dispatch_builtin<H: rustyline::Helper, I: rustyline::history::History>(
             Some(BuiltinAction::Continue)
         }
         COMMAND_HISTORY => {
-            command_history(
-                editor,
-                last_appended_index,
-                arguments,
-                stdin,
-                stdout,
-                stderr,
-            );
+            command_history(editor, last_appended_index, arguments, stdin, stdout, stderr);
             Some(BuiltinAction::Continue)
         }
         COMMAND_JOBS => {
@@ -82,8 +89,7 @@ pub fn dispatch_builtin<H: rustyline::Helper, I: rustyline::history::History>(
 }
 
 pub fn is_executable(full_path_to_executable: &Path) -> io::Result<bool> {
-    Ok(full_path_to_executable.is_file()
-        && (full_path_to_executable.metadata()?.permissions().mode() & 0o111 != 0))
+    Ok(full_path_to_executable.is_file() && (full_path_to_executable.metadata()?.permissions().mode() & 0o111 != 0))
 }
 
 pub fn search_executable(command: &str) -> Option<String> {
@@ -212,8 +218,7 @@ pub fn command_type(
 ) {
     if let Some((_, command)) = arguments.next() {
         match command.as_str() {
-            COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE
-            | COMMAND_HISTORY | COMMAND_JOBS => {
+            COMMAND_CD | COMMAND_ECHO | COMMAND_EXIT | COMMAND_PWD | COMMAND_TYPE | COMMAND_HISTORY | COMMAND_JOBS => {
                 writeln!(stdout, "{command} is a shell builtin").unwrap_or_default();
             }
             _ => {
@@ -305,11 +310,7 @@ pub fn command_history<H: rustyline::Helper, I: rustyline::history::History>(
     };
 
     let len = history.len();
-    let start_index = if count > 0 {
-        len.saturating_sub(count)
-    } else {
-        0
-    };
+    let start_index = if count > 0 { len.saturating_sub(count) } else { 0 };
 
     for i in start_index..len {
         if let Ok(Some(entry)) = history.get(i, SearchDirection::Forward) {

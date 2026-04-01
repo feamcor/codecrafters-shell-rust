@@ -21,9 +21,7 @@ impl JobManager {
 
     #[allow(clippy::maybe_infinite_iter)]
     fn next_id(&self) -> usize {
-        (1..)
-            .find(|n| !self.jobs.iter().any(|j| j.id == *n))
-            .unwrap()
+        (1..).find(|n| !self.jobs.iter().any(|j| j.id == *n)).unwrap()
     }
 
     /// Add a background job. Prints `[id] pid` to stdout.
@@ -85,11 +83,7 @@ impl JobManager {
                 let _ = writeln!(out, "[{}]{}  {:<24}{}", job.id, marker, status, job.command);
                 done_indices.push(i);
             } else {
-                let _ = writeln!(
-                    out,
-                    "[{}]{}  {:<24}{} &",
-                    job.id, marker, status, job.command
-                );
+                let _ = writeln!(out, "[{}]{}  {:<24}{} &", job.id, marker, status, job.command);
             }
         }
         for i in done_indices.into_iter().rev() {

@@ -5,13 +5,19 @@ mod parser;
 mod shell_helper;
 
 use crate::commands::BuiltinAction;
-use crate::executor::{execute_pipeline, ShellContext};
+use crate::executor::execute_pipeline;
+use crate::executor::ShellContext;
 use crate::jobs::JobManager;
-use crate::parser::{parse_input, SHELL_PROMPT};
-use crate::shell_helper::{ShellCompleter, ShellHelper};
-use rustyline::config::{BellStyle, CompletionType, Config};
+use crate::parser::parse_input;
+use crate::parser::SHELL_PROMPT;
+use crate::shell_helper::ShellCompleter;
+use crate::shell_helper::ShellHelper;
+use rustyline::config::BellStyle;
+use rustyline::config::CompletionType;
+use rustyline::config::Config;
 use rustyline::error::ReadlineError;
-use rustyline::history::{History, SearchDirection};
+use rustyline::history::History;
+use rustyline::history::SearchDirection;
 use rustyline::Editor;
 use std::io::Write;
 

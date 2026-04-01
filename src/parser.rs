@@ -136,11 +136,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
 
                 CHAR_PIPE if !escape_next_char && !in_single_quotes && !in_double_quotes => {
                     pipeline.push(ParsedCommand {
-                        tokens: if tokens.is_empty() {
-                            None
-                        } else {
-                            Some(tokens)
-                        },
+                        tokens: if tokens.is_empty() { None } else { Some(tokens) },
                         stdout,
                         stderr,
                         background: false,
@@ -148,9 +144,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                     continue 'pipeline;
                 }
 
-                file_descriptor
-                    if file_descriptor == STDOUT_FILE_DESCRIPTOR && current_token.is_empty() =>
-                {
+                file_descriptor if file_descriptor == STDOUT_FILE_DESCRIPTOR && current_token.is_empty() => {
                     if let Some(next_character) = characters.peek() {
                         if *next_character == CHAR_GREATER_THAN {
                             in_stdout_redirection = true;
@@ -163,9 +157,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                     }
                 }
 
-                file_descriptor
-                    if file_descriptor == STDERR_FILE_DESCRIPTOR && current_token.is_empty() =>
-                {
+                file_descriptor if file_descriptor == STDERR_FILE_DESCRIPTOR && current_token.is_empty() => {
                     if let Some(next_character) = characters.peek() {
                         if *next_character == CHAR_GREATER_THAN {
                             in_stderr_redirection = true;
@@ -178,10 +170,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
                     }
                 }
 
-                file_descriptor
-                    if file_descriptor == STDOUT_STDERR_FILE_DESCRIPTOR
-                        && current_token.is_empty() =>
-                {
+                file_descriptor if file_descriptor == STDOUT_STDERR_FILE_DESCRIPTOR && current_token.is_empty() => {
                     if let Some(next_character) = characters.peek() {
                         if *next_character == CHAR_GREATER_THAN {
                             in_stdout_redirection = true;
@@ -251,11 +240,7 @@ pub fn parse_input(input: &str) -> Option<Vec<ParsedCommand>> {
         }
 
         pipeline.push(ParsedCommand {
-            tokens: if tokens.is_empty() {
-                None
-            } else {
-                Some(tokens)
-            },
+            tokens: if tokens.is_empty() { None } else { Some(tokens) },
             stdout,
             stderr,
             background,

@@ -1,11 +1,22 @@
-use crate::parser::{
-    COMMAND_CD, COMMAND_ECHO, COMMAND_EXIT, COMMAND_HISTORY, COMMAND_JOBS, COMMAND_PWD,
-    COMMAND_TYPE, ENVIRONMENT_VARIABLE_PATH, ENVIRONMENT_VARIABLE_PATH_DELIMITER, SHELL_PROMPT,
-};
-use rustyline::completion::{Completer, Pair};
+use crate::parser::COMMAND_CD;
+use crate::parser::COMMAND_ECHO;
+use crate::parser::COMMAND_EXIT;
+use crate::parser::COMMAND_HISTORY;
+use crate::parser::COMMAND_JOBS;
+use crate::parser::COMMAND_PWD;
+use crate::parser::COMMAND_TYPE;
+use crate::parser::ENVIRONMENT_VARIABLE_PATH;
+use crate::parser::ENVIRONMENT_VARIABLE_PATH_DELIMITER;
+use crate::parser::SHELL_PROMPT;
+use rustyline::completion::Completer;
+use rustyline::completion::Pair;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
-use rustyline::{Completer, Context, Helper, Hinter, Validator};
+use rustyline::Completer;
+use rustyline::Context;
+use rustyline::Helper;
+use rustyline::Hinter;
+use rustyline::Validator;
 use std::env::var;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -18,10 +29,7 @@ fn compute_lcp(prefix: &str, matches: &[(String, bool)]) -> String {
         return prefix.to_string();
     }
 
-    let matching: Vec<_> = matches
-        .iter()
-        .filter(|(name, _)| name.starts_with(prefix))
-        .collect();
+    let matching: Vec<_> = matches.iter().filter(|(name, _)| name.starts_with(prefix)).collect();
 
     if matching.is_empty() {
         return prefix.to_string();
@@ -36,10 +44,7 @@ fn compute_lcp(prefix: &str, matches: &[(String, bool)]) -> String {
         let Some(c) = matching[0].0.chars().nth(i) else {
             break;
         };
-        if matching
-            .iter()
-            .all(|(name, _)| name.chars().nth(i) == Some(c))
-        {
+        if matching.iter().all(|(name, _)| name.chars().nth(i) == Some(c)) {
             lcp_chars.push(c);
         } else {
             break;
@@ -78,9 +83,7 @@ impl ShellCompleter {
                 if let Ok(dir_entries) = std::fs::read_dir(path_dir) {
                     for dir_entry in dir_entries.flatten() {
                         if let Ok(entry_metadata) = dir_entry.metadata() {
-                            if entry_metadata.is_file()
-                                && (entry_metadata.permissions().mode() & 0o111 != 0)
-                            {
+                            if entry_metadata.is_file() && (entry_metadata.permissions().mode() & 0o111 != 0) {
                                 if let Ok(file_name) = dir_entry.file_name().into_string() {
                                     commands.push(file_name);
                                 }
@@ -212,8 +215,7 @@ impl Completer for ShellCompleter {
             return Ok((0, Vec::new()));
         }
 
-        let (start, word) =
-            rustyline::completion::extract_word(line, pos, None, char::is_whitespace);
+        let (start, word) = rustyline::completion::extract_word(line, pos, None, char::is_whitespace);
 
         let mut candidates = Vec::new();
         for command in &self.commands {
