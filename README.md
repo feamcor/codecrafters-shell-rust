@@ -19,26 +19,34 @@ The shell starts an interactive loop, reads a line, parses it into one or more c
 ## Project Structure
 
 - `src/main.rs`
-  - Entry point. Sets up the readline editor, loads/saves history, drives the REPL loop, invokes parsing, orchestrates pipelines, wiring of stdin/stdout/stderr and delegating to built-ins or external processes. Manages background jobs: spawning them with `&`, tracking them in a `Vec<BackgroundJob>`, reaping finished jobs before each prompt, and recycling job numbers.
+  - Entry point. Sets up the rustyline editor and config, loads/saves history (`$HISTFILE`), and drives the REPL loop. Each iteration reaps finished background jobs, reads a line, adds it to history, and delegates to `executor::execute_pipeline`. Saves history on `exit` or EOF.
 - `src/parser.rs`
   - Tokenizer and parser for a single input line. Produces a vector of `ParsedCommand` structs forming a pipeline. Handles quoting rules, backslash escapes inside and outside quotes, pipe splitting, and output redirection targets/flags.
   - Constants used across the shell (prompt string, command names, environment variable names, file-descriptor tokens like `1`, `2`, and `&`).
   - Escape expansion helper used by `echo -e`.
+- `src/executor.rs`
+  - Pipeline execution engine. Defines `ShellContext` (carries the rustyline editor reference and history-append cursor) and `execute_pipeline`.
+  - Iterates over pipeline stages, wires `os_pipe` between consecutive stages, resolves each command as a built-in or external process, and applies file redirections for the final stage.
+  - For single commands, spawns the child and either registers it as a background job or waits for it. For multi-stage pipelines, spawns all children then waits for them in order.
 - `src/commands.rs`
   - Implementations of built-in commands and the external command runner.
-  - Built-ins implemented:
+  - Built-ins dispatched via `dispatch_builtin`:
     - `cd [dir]` — changes directory. Defaults to `$HOME`. Interprets `~` as home.
     - `echo [-e] [args...]` — prints arguments; with `-e` expands `\n`, `\t`, `\r`, `\\`, `\0`, `\"`, `\'`.
     - `exit [code]` — terminates the shell with an optional numeric exit code (default 0).
     - `pwd` — prints the current working directory.
     - `type <name>` — reports whether `<name>` is a shell builtin or the full path of an external command.
     - `history [N] | -r <file> | -a <file> | -w <file>` — prints recent history, reads entries from a file, appends only new entries, or writes the full history respectively.
-    - `jobs` — lists all background jobs with their job number, status (`Running`/`Done`), and command. Marks the most recent job with `+` and the second-most-recent with `-`. Finished jobs are removed from the list after being displayed.
-  - External command execution:
-    - Resolved via `$PATH` using `search_executable`, or uses an absolute path if executable.
-    - Supports capturing stdout/stderr when redirected, otherwise inherits the terminal streams.
-    - For single commands, reads child pipes and forwards data; for pipelines, spawns chained processes and waits.
-  - Output redirection helper: opens files in truncate or append mode and returns a writer when redirection is requested.
+    - `jobs` — delegates to `JobManager::list_jobs` to list all background jobs.
+  - External command execution via `run_executable`: resolves via `$PATH` or absolute path, supports captured or inherited stdout/stderr.
+  - Output redirection helper `get_redirection`: opens files in truncate or append mode.
+- `src/jobs.rs`
+  - Background job management. Defines `BackgroundJob` (id, pid, command string, `Child` handle) and `JobManager`.
+  - `JobManager::add` — registers a new background job and prints `[id] pid`.
+  - `JobManager::reap` — called before each prompt; non-blocking checks all jobs and prints `Done` for finished ones, then removes them.
+  - `JobManager::list_jobs` — used by the `jobs` built-in; prints `Running`/`Done` status with `+`/`-` markers, removes done entries after display.
+  - `JobManager::wait_all` — blocks until all remaining background jobs finish (called at REPL exit).
+  - Job IDs are the lowest available positive integers, recycled when jobs finish.
 - `src/shell_helper.rs`
   - Glue code for `rustyline`: helper and completer implementations.
   - `ShellHelper` struct integrating with rustyline's `Helper`, `Completer`, `Hinter`, and `Validator` traits.
