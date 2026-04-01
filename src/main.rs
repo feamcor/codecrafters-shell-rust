@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .bell_style(BellStyle::Audible)
+        .history_ignore_dups(false)?
         .build();
 
     let mut readline = Editor::with_config(config)?;
