@@ -173,13 +173,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     COMMAND_JOBS => {
                         let mut stdout_builtin = stdout_builtin;
-                        let last_id = background_jobs.last().map(|j| j.id);
-                        for job in &mut background_jobs {
+                        let len = background_jobs.len();
+                        for (i, job) in background_jobs.iter_mut().enumerate() {
                             let status = match job.child.try_wait() {
                                 Ok(Some(_)) => "Done",
                                 _ => "Running",
                             };
-                            let marker = if Some(job.id) == last_id { '+' } else { '-' };
+                            let marker = if i == len - 1 {
+                                '+'
+                            } else if i == len - 2 {
+                                '-'
+                            } else {
+                                ' '
+                            };
                             writeln!(
                                 stdout_builtin,
                                 "[{}]{}  {:<24}{} &",
