@@ -174,11 +174,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     COMMAND_JOBS => {
                         let mut stdout_builtin = stdout_builtin;
                         let len = background_jobs.len();
+                        let mut done_indices = Vec::new();
                         for (i, job) in background_jobs.iter_mut().enumerate() {
-                            let status = match job.child.try_wait() {
-                                Ok(Some(_)) => "Done",
-                                _ => "Running",
-                            };
+                            let is_done = matches!(job.child.try_wait(), Ok(Some(_)));
+                            let status = if is_done { "Done" } else { "Running" };
                             let marker = if i == len - 1 {
                                 '+'
                             } else if i == len - 2 {
@@ -186,12 +185,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else {
                                 ' '
                             };
-                            writeln!(
-                                stdout_builtin,
-                                "[{}]{}  {:<24}{} &",
-                                job.id, marker, status, job.command
-                            )
-                            .unwrap_or_default();
+                            if is_done {
+                                writeln!(
+                                    stdout_builtin,
+                                    "[{}]{}  {:<24}{}",
+                                    job.id, marker, status, job.command
+                                )
+                                .unwrap_or_default();
+                                done_indices.push(i);
+                            } else {
+                                writeln!(
+                                    stdout_builtin,
+                                    "[{}]{}  {:<24}{} &",
+                                    job.id, marker, status, job.command
+                                )
+                                .unwrap_or_default();
+                            }
+                        }
+                        for i in done_indices.into_iter().rev() {
+                            background_jobs.remove(i);
                         }
                     }
                     _ => {
