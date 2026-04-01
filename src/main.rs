@@ -15,6 +15,14 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
+struct BackgroundJob {
+    id: usize,
+    #[allow(dead_code)]
+    pid: u32,
+    command: String,
+    child: Child,
+}
+
 fn save_history_plain<H: rustyline::Helper, I: History>(readline: &Editor<H, I>, path: &str) {
     if let Ok(mut file) = std::fs::File::create(path) {
         let history = readline.history();
@@ -46,6 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut last_appended_index: usize = readline.history().len();
     let mut next_job_id: usize = 1;
+    let mut background_jobs: Vec<BackgroundJob> = Vec::new();
 
     'repl: loop {
         let input = match readline.readline(SHELL_PROMPT) {
@@ -163,7 +172,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
                     COMMAND_JOBS => {
-                        // Empty implementation: no background jobs tracked yet
+                        let mut stdout_builtin = stdout_builtin;
+                        let last_id = background_jobs.last().map(|j| j.id);
+                        for job in &mut background_jobs {
+                            let status = match job.child.try_wait() {
+                                Ok(Some(_)) => "Done",
+                                _ => "Running",
+                            };
+                            let marker = if Some(job.id) == last_id { '+' } else { '-' };
+                            writeln!(
+                                stdout_builtin,
+                                "[{}]{}  {:<24}{} &",
+                                job.id, marker, status, job.command
+                            )
+                            .unwrap_or_default();
+                        }
                     }
                     _ => {
                         if pipeline_length == 1 {
@@ -179,12 +202,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 current_command.stderr.file_name.is_none(),
                                 None,
                             ) {
-                                Ok(mut child) => {
+                                Ok(child) => {
                                     if current_command.background {
                                         let job_id = next_job_id;
                                         next_job_id += 1;
-                                        println!("[{}] {}", job_id, child.id());
+                                        let pid = child.id();
+                                        let cmd_str = current_command
+                                            .tokens
+                                            .as_ref()
+                                            .map(|t| t.join(" "))
+                                            .unwrap_or_default();
+                                        println!("[{}] {}", job_id, pid);
+                                        background_jobs.push(BackgroundJob {
+                                            id: job_id,
+                                            pid,
+                                            command: cmd_str,
+                                            child,
+                                        });
                                     } else {
+                                        let mut child = child;
                                         let _ = child.wait();
                                     }
                                 }
