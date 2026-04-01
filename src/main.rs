@@ -23,6 +23,27 @@ struct BackgroundJob {
     child: Child,
 }
 
+fn reap_background_jobs(background_jobs: &mut Vec<BackgroundJob>) {
+    let len = background_jobs.len();
+    let mut done_indices = Vec::new();
+    for (i, job) in background_jobs.iter_mut().enumerate() {
+        if matches!(job.child.try_wait(), Ok(Some(_))) {
+            let marker = if i == len - 1 {
+                '+'
+            } else if i == len - 2 {
+                '-'
+            } else {
+                ' '
+            };
+            println!("[{}]{}  {:<24}{}", job.id, marker, "Done", job.command);
+            done_indices.push(i);
+        }
+    }
+    for i in done_indices.into_iter().rev() {
+        background_jobs.remove(i);
+    }
+}
+
 fn save_history_plain<H: rustyline::Helper, I: History>(readline: &Editor<H, I>, path: &str) {
     if let Ok(mut file) = std::fs::File::create(path) {
         let history = readline.history();
@@ -57,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut background_jobs: Vec<BackgroundJob> = Vec::new();
 
     'repl: loop {
+        reap_background_jobs(&mut background_jobs);
         let input = match readline.readline(SHELL_PROMPT) {
             Ok(line) => {
                 let _ = readline.add_history_entry(line.as_str());
